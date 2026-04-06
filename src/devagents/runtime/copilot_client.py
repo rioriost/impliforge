@@ -18,6 +18,7 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 DEFAULT_MODEL = "gpt-5.4"
@@ -121,6 +122,30 @@ class CopilotClientError(RuntimeError):
     """Raised when the Copilot client cannot fulfill a request."""
 
 
+@dataclass(slots=True)
+class CopilotEnvironmentIssue:
+    """Structured preflight issue describing an environment assumption failure."""
+
+    code: str
+    message: str
+
+
+@dataclass(slots=True)
+class CopilotEnvironmentValidation:
+    """Structured preflight validation result for SDK execution prerequisites."""
+
+    ok: bool
+    issues: tuple[CopilotEnvironmentIssue, ...] = ()
+
+    def require_ok(self) -> None:
+        """Raise a client error when validation failed."""
+        if self.ok:
+            return
+
+        details = "; ".join(issue.message for issue in self.issues) or "unknown issue"
+        raise CopilotClientError(f"Copilot SDK preflight failed: {details}")
+
+
 class CopilotClient:
     """Thin wrapper around the GitHub Copilot Python SDK."""
 
@@ -219,6 +244,7 @@ class CopilotClient:
             return self._default_model_list()
 
         try:
+            self.validate_environment().require_ok()
             client_module = self._import_sdk_client_module()
             client = self._build_sdk_client(client_module)
             async with client:
@@ -235,6 +261,7 @@ class CopilotClient:
         resolved_model: str,
     ) -> dict[str, Any]:
         """Invoke the real Copilot SDK and return a normalized intermediate payload."""
+        self.validate_environment().require_ok()
         client_module = self._import_sdk_client_module()
         session_module = self._import_sdk_session_module()
 
@@ -274,6 +301,61 @@ class CopilotClient:
                     "workspace_path": str(getattr(session, "workspace_path", "") or ""),
                     "raw_messages": [self._event_to_dict(event) for event in messages],
                 }
+
+    def validate_environment(self) -> CopilotEnvironmentValidation:
+        """Validate narrow SDK execution prerequisites before attempting SDK work."""
+        issues: list[CopilotEnvironmentIssue] = []
+
+        if self.config.working_directory is not None:
+            working_directory = Path(self.config.working_directory)
+            if not working_directory.exists():
+                issues.append(
+                    CopilotEnvironmentIssue(
+                        code="working_directory_missing",
+                        message=(
+                            "configured working directory does not exist: "
+                            f"{self.config.working_directory}"
+                        ),
+                    )
+                )
+            elif not working_directory.is_dir():
+                issues.append(
+                    CopilotEnvironmentIssue(
+                        code="working_directory_not_directory",
+                        message=(
+                            "configured working directory is not a directory: "
+                            f"{self.config.working_directory}"
+                        ),
+                    )
+                )
+
+        if self.config.config_dir is not None:
+            config_dir = Path(self.config.config_dir)
+            if not config_dir.exists():
+                issues.append(
+                    CopilotEnvironmentIssue(
+                        code="config_dir_missing",
+                        message=(
+                            "configured config directory does not exist: "
+                            f"{self.config.config_dir}"
+                        ),
+                    )
+                )
+            elif not config_dir.is_dir():
+                issues.append(
+                    CopilotEnvironmentIssue(
+                        code="config_dir_not_directory",
+                        message=(
+                            "configured config directory is not a directory: "
+                            f"{self.config.config_dir}"
+                        ),
+                    )
+                )
+
+        return CopilotEnvironmentValidation(
+            ok=not issues,
+            issues=tuple(issues),
+        )
 
     def _build_sdk_client(self, client_module: Any) -> Any:
         """Construct the SDK client using subprocess configuration."""

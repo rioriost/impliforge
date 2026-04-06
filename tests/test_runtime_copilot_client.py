@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 from devagents.runtime.copilot_client import (
@@ -245,6 +246,104 @@ def test_generate_text_builds_request_and_preserves_optional_fields() -> None:
     assert request.metadata == {"origin": "unit"}
     assert request.reasoning_effort == "high"
     assert response.model == "gpt-custom"
+
+
+def test_validate_environment_accepts_existing_directories(tmp_path: Path) -> None:
+    working_directory = tmp_path / "workspace"
+    config_dir = tmp_path / "config"
+    working_directory.mkdir()
+    config_dir.mkdir()
+
+    client = CopilotClient(
+        CopilotClientConfig(
+            working_directory=str(working_directory),
+            config_dir=str(config_dir),
+        )
+    )
+
+    validation = client.validate_environment()
+
+    assert validation.ok is True
+    assert validation.issues == ()
+
+
+def test_validate_environment_reports_missing_working_directory(
+    tmp_path: Path,
+) -> None:
+    missing_directory = tmp_path / "missing-workspace"
+    client = CopilotClient(
+        CopilotClientConfig(working_directory=str(missing_directory))
+    )
+
+    validation = client.validate_environment()
+
+    assert validation.ok is False
+    assert [issue.code for issue in validation.issues] == ["working_directory_missing"]
+    assert validation.issues[0].message == (
+        f"configured working directory does not exist: {missing_directory}"
+    )
+
+
+def test_validate_environment_reports_non_directory_config_path(
+    tmp_path: Path,
+) -> None:
+    config_file = tmp_path / "copilot-config.json"
+    config_file.write_text("{}", encoding="utf-8")
+    client = CopilotClient(CopilotClientConfig(config_dir=str(config_file)))
+
+    validation = client.validate_environment()
+
+    assert validation.ok is False
+    assert [issue.code for issue in validation.issues] == ["config_dir_not_directory"]
+    assert validation.issues[0].message == (
+        f"configured config directory is not a directory: {config_file}"
+    )
+
+
+def test_generate_uses_dry_run_fallback_when_environment_preflight_fails(
+    tmp_path: Path,
+) -> None:
+    missing_directory = tmp_path / "missing-workspace"
+    client = CopilotClient(
+        CopilotClientConfig(
+            default_model="gpt-default",
+            working_directory=str(missing_directory),
+        )
+    )
+
+    response = run(
+        client.generate(
+            CopilotRequest(
+                prompt="Need output",
+                task_type=CopilotTaskType.REVIEW,
+            )
+        )
+    )
+
+    assert response.is_dry_run is True
+    assert response.metadata["reason"] == "sdk_error:CopilotClientError"
+    assert "Copilot SDK preflight failed:" in response.metadata["error_message"]
+    assert str(missing_directory) in response.metadata["error_message"]
+
+
+def test_list_models_raises_client_error_when_environment_preflight_fails_and_fallback_disabled(
+    tmp_path: Path,
+) -> None:
+    missing_directory = tmp_path / "missing-workspace"
+    client = CopilotClient(
+        CopilotClientConfig(
+            working_directory=str(missing_directory),
+            dry_run_fallback=False,
+        )
+    )
+
+    try:
+        run(client.list_models())
+    except CopilotClientError as exc:
+        assert "Copilot SDK preflight failed:" in str(exc)
+        assert str(missing_directory) in str(exc)
+    else:
+        raise AssertionError("Expected CopilotClientError")
 
 
 def test_build_resume_request_merges_prompts_and_sets_resume_metadata() -> None:

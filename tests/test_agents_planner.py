@@ -71,6 +71,9 @@ def test_run_builds_plan_from_normalized_requirements() -> None:
         "acceptance_criteria_count": 2,
         "open_question_count": 1,
         "task_count": 8,
+        "objective_length": len("Deliver a resumable workflow"),
+        "long_objective_detected": False,
+        "long_objective_threshold": 4000,
     }
 
 
@@ -98,6 +101,9 @@ def test_run_falls_back_to_state_requirement_and_empty_lists() -> None:
         "acceptance_criteria_count": 0,
         "open_question_count": 0,
         "task_count": 8,
+        "objective_length": len(state.requirement),
+        "long_objective_detected": False,
+        "long_objective_threshold": 4000,
     }
 
 
@@ -129,3 +135,33 @@ def test_normalize_list_trims_and_filters_values() -> None:
         "done",
     ]
     assert agent._normalize_list("not-a-list") == []
+
+
+def test_run_records_long_objective_metrics_without_changing_plan_shape() -> None:
+    agent = PlanningAgent()
+    state = build_state()
+    long_objective = "Long requirement slice " * 250
+    task = AgentTask(
+        name="planning",
+        objective="Create implementation plan",
+        inputs={
+            "normalized_requirements": {
+                "objective": long_objective,
+                "constraints": ["keep changes small"],
+                "acceptance_criteria": ["planner returns a plan"],
+                "open_questions": [],
+            }
+        },
+    )
+
+    result = asyncio.run(agent.run(task, state))
+
+    plan = result.outputs["plan"]
+    assert result.status == "completed"
+    assert plan["goal"] == long_objective.strip()
+    assert plan["constraints"] == ["keep changes small"]
+    assert plan["acceptance_criteria"] == ["planner returns a plan"]
+    assert result.metrics["objective_length"] == len(long_objective.strip())
+    assert result.metrics["long_objective_detected"] is True
+    assert result.metrics["long_objective_threshold"] == 4000
+    assert result.metrics["task_count"] == 8

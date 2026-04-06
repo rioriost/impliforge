@@ -16,6 +16,9 @@ class PlanningAgent(BaseAgent):
     async def run(self, task: AgentTask, state: WorkflowState) -> AgentResult:
         normalized = self._get_normalized_requirements(task)
         objective = str(normalized.get("objective", state.requirement)).strip()
+        objective_length = len(objective)
+        long_objective_threshold = 4000
+        long_objective_detected = objective_length >= long_objective_threshold
 
         constraints = self._normalize_list(normalized.get("constraints"))
         acceptance_criteria = self._normalize_list(
@@ -109,6 +112,9 @@ class PlanningAgent(BaseAgent):
                 "acceptance_criteria_count": len(acceptance_criteria),
                 "open_question_count": len(open_questions),
                 "task_count": len(plan["task_breakdown"]),
+                "objective_length": objective_length,
+                "long_objective_detected": long_objective_detected,
+                "long_objective_threshold": long_objective_threshold,
             },
         )
 
