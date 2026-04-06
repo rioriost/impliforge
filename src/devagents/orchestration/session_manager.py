@@ -168,12 +168,14 @@ class SessionManager:
         snapshot: SessionSnapshot,
     ) -> WorkflowState:
         """Restore workflow session metadata and selected context from a snapshot."""
+        persistent_context = snapshot.persistent_context
+        self._validate_restore_context(persistent_context)
+
         state.set_session(
             session_id=snapshot.session_id,
             parent_session_id=snapshot.parent_session_id,
         )
 
-        persistent_context = snapshot.persistent_context
         for note in persistent_context.get("notes", []):
             if note not in state.notes:
                 state.add_note(str(note))
@@ -193,6 +195,8 @@ class SessionManager:
         for changed_file in persistent_context.get("changed_files", []):
             if changed_file not in state.changed_files:
                 state.add_changed_file(str(changed_file))
+
+        self._restore_task_statuses(state, persistent_context)
 
         state.add_note(f"Session restored from snapshot: {snapshot.session_id}")
         return state
@@ -315,6 +319,53 @@ class SessionManager:
     def _build_session_id(self) -> str:
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         return f"{self.config.session_id_prefix}-{timestamp}"
+
+    def _validate_restore_context(self, persistent_context: dict[str, Any]) -> None:
+        required_keys = (
+            "workflow_id",
+            "requirement",
+            "phase",
+            "session_id",
+            "completed_tasks",
+            "pending_tasks",
+            "next_action",
+        )
+        missing_keys = [
+            key
+            for key in required_keys
+            if key not in persistent_context or persistent_context.get(key) is None
+        ]
+        if missing_keys:
+            missing = ", ".join(missing_keys)
+            raise ValueError(
+                "Session snapshot is incomplete; resume from the latest consistent "
+                f"checkpoint instead. Missing keys: {missing}"
+            )
+
+    def _restore_task_statuses(
+        self,
+        state: WorkflowState,
+        persistent_context: dict[str, Any],
+    ) -> None:
+        status_map = {
+            "completed_tasks": "COMPLETED",
+            "pending_tasks": "PENDING",
+            "blocked_tasks": "BLOCKED",
+            "failed_tasks": "FAILED",
+        }
+
+        for context_key, status_name in status_map.items():
+            task_ids = persistent_context.get(context_key, [])
+            if not isinstance(task_ids, list):
+                continue
+
+            for task_id in task_ids:
+                task = state.get_task(str(task_id))
+                if task is None:
+                    continue
+                task.status = task.status.__class__[status_name]
+
+        state.touch()
 
     def _normalize_ratio(self, value: float) -> float:
         if value < 0.0:

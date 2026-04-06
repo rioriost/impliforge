@@ -56,6 +56,13 @@ def test_collect_results_and_finalize_return_compact_summary() -> None:
     state.add_open_question("question-1")
     state.add_risk("risk-1")
     state.add_changed_file("src/example.py")
+    state.record_event(
+        "manual_check",
+        task_id="planning",
+        status="observed",
+        summary="Collected for summary output.",
+        details={"source": "test"},
+    )
 
     orchestrator = Orchestrator(
         requirements_agent=DummyAgent("requirements", AgentResult.success("unused")),
@@ -81,6 +88,16 @@ def test_collect_results_and_finalize_return_compact_summary() -> None:
     assert collected["open_questions"] == ["question-1"]
     assert collected["risks"] == ["risk-1"]
     assert collected["changed_files"] == ["src/example.py"]
+    assert collected["execution_trace"][-1] == {
+        "event_type": "manual_check",
+        "phase": "testing",
+        "task_id": "planning",
+        "agent_name": None,
+        "status": "observed",
+        "summary": "Collected for summary output.",
+        "details": {"source": "test"},
+        "timestamp": collected["execution_trace"][-1]["timestamp"],
+    }
 
 
 def test_handle_failure_marks_phase_task_and_note() -> None:
@@ -180,6 +197,13 @@ def test_finalize_success_marks_pending_dependency_tasks_as_skipped() -> None:
     ]
     assert state.phase == WorkflowPhase.COMPLETED
     assert state.notes[-1] == "Workflow completed."
+    assert state.execution_trace[-1].event_type == "workflow_completed"
+    assert state.execution_trace[-1].task_id == "finalization"
+    assert state.execution_trace[-1].status == "completed"
+    assert state.execution_trace[-1].details["skipped_dependencies"] == [
+        "documentation",
+        "review",
+    ]
 
 
 def test_minimal_orchestrator_completes_and_skips_optional_tasks(
@@ -371,6 +395,48 @@ def test_orchestrator_runs_all_configured_agents_and_collects_outputs(
         "review-risk",
     ]
 
+    event_types = [event.event_type for event in state.execution_trace]
+    assert event_types[0] == "workflow_initialized"
+    assert event_types.count("task_dispatched") == 5
+    assert event_types.count("task_completed") == 5
+    assert event_types.count("phase_changed") >= 5
+    assert event_types[-1] == "workflow_completed"
+
+    dispatched_events = [
+        event
+        for event in state.execution_trace
+        if event.event_type == "task_dispatched"
+    ]
+    assert [event.task_id for event in dispatched_events] == [
+        "requirements_analysis",
+        "planning",
+        "implementation",
+        "test_execution",
+        "review",
+    ]
+    assert [event.agent_name for event in dispatched_events] == [
+        "requirements",
+        "planner",
+        "implementer",
+        "tester",
+        "reviewer",
+    ]
+
+    completed_events = [
+        event for event in state.execution_trace if event.event_type == "task_completed"
+    ]
+    assert [event.task_id for event in completed_events] == [
+        "requirements_analysis",
+        "planning",
+        "implementation",
+        "test_execution",
+        "review",
+    ]
+    assert completed_events[0].details["output_keys"] == ["normalized_requirements"]
+    assert completed_events[1].details["open_question_count"] == 1
+    assert completed_events[2].details["changed_file_count"] == 1
+    assert completed_events[4].summary == "review complete"
+
 
 def test_orchestrator_stops_on_implementation_failure(
     tmp_path: Path,
@@ -414,6 +480,14 @@ def test_orchestrator_stops_on_implementation_failure(
     assert len(test_agent.calls) == 0
     assert len(review_agent.calls) == 0
     assert state.notes[-1] == "implementation failed: implementation failed"
+
+    failed_events = [
+        event for event in state.execution_trace if event.event_type == "task_failed"
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].task_id == "implementation"
+    assert failed_events[0].status == "failed"
+    assert failed_events[0].details == {"reason": "implementation failed"}
 
 
 def test_orchestrator_stops_on_test_failure(

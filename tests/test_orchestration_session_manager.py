@@ -234,6 +234,13 @@ def test_restore_context_merges_unique_items_and_adds_restore_note() -> None:
         session_id="sess-restored",
         parent_session_id="sess-previous",
         persistent_context={
+            "workflow_id": "wf-restore-001",
+            "requirement": "Restore a session",
+            "phase": state.phase.value,
+            "session_id": "sess-restored",
+            "completed_tasks": [],
+            "pending_tasks": [],
+            "next_action": "Resume implementation",
             "notes": ["existing-note", "new-note"],
             "risks": ["existing-risk", "new-risk"],
             "open_questions": ["existing-question", "new-question"],
@@ -257,6 +264,68 @@ def test_restore_context_merges_unique_items_and_adds_restore_note() -> None:
     assert any(
         note == "Session restored from snapshot: sess-restored" for note in state.notes
     )
+
+
+def test_restore_context_rejects_incomplete_persistent_context() -> None:
+    state = create_workflow_state(
+        workflow_id="wf-restore-invalid",
+        requirement="Reject incomplete restore context",
+        model="gpt-5.4",
+    )
+    snapshot = SessionSnapshot(
+        session_id="sess-invalid",
+        parent_session_id="sess-parent",
+        persistent_context={
+            "workflow_id": "wf-restore-invalid",
+            "requirement": "Reject incomplete restore context",
+            "phase": state.phase.value,
+            "session_id": "sess-invalid",
+            "completed_tasks": [],
+        },
+    )
+
+    manager = SessionManager()
+
+    try:
+        manager.restore_context(state, snapshot)
+    except ValueError as exc:
+        assert "latest consistent checkpoint" in str(exc)
+        assert "pending_tasks" in str(exc)
+        assert "next_action" in str(exc)
+    else:
+        raise AssertionError("expected incomplete restore context to fail")
+
+
+def test_restore_context_recovers_task_statuses_from_persistent_context() -> None:
+    state = create_workflow_state(
+        workflow_id="wf-restore-tasks",
+        requirement="Recover task statuses from snapshot",
+        model="gpt-5.4",
+    )
+    snapshot = SessionSnapshot(
+        session_id="sess-task-restore",
+        parent_session_id="sess-parent",
+        persistent_context={
+            "workflow_id": "wf-restore-tasks",
+            "requirement": "Recover task statuses from snapshot",
+            "phase": state.phase.value,
+            "session_id": "sess-task-restore",
+            "completed_tasks": ["requirements_analysis"],
+            "pending_tasks": ["documentation", "finalization"],
+            "blocked_tasks": ["planning"],
+            "failed_tasks": ["implementation"],
+            "next_action": "Resume planning",
+        },
+    )
+
+    manager = SessionManager()
+    manager.restore_context(state, snapshot)
+
+    assert state.require_task("requirements_analysis").status.value == "completed"
+    assert state.require_task("planning").status.value == "blocked"
+    assert state.require_task("implementation").status.value == "failed"
+    assert state.require_task("documentation").status.value == "pending"
+    assert state.require_task("finalization").status.value == "pending"
 
 
 def test_rotate_session_returns_snapshot_and_updates_state_when_rotation_occurs() -> (

@@ -88,6 +88,23 @@ class SessionSnapshot:
 
 
 @dataclass(slots=True)
+class WorkflowTraceEvent:
+    """Structured execution trace event for workflow observability."""
+
+    event_type: str
+    phase: str
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    task_id: str | None = None
+    agent_name: str | None = None
+    status: str | None = None
+    summary: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
 class WorkflowState:
     """Canonical in-memory workflow state for orchestration."""
 
@@ -104,12 +121,19 @@ class WorkflowState:
     risks: list[str] = field(default_factory=list)
     open_questions: list[str] = field(default_factory=list)
     retry_counters: dict[str, int] = field(default_factory=dict)
+    execution_trace: list[WorkflowTraceEvent] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def set_phase(self, phase: WorkflowPhase) -> None:
+        previous_phase = self.phase
         self.phase = phase
         self.touch()
+        self.record_event(
+            "phase_changed",
+            phase=phase.value,
+            details={"previous_phase": previous_phase.value},
+        )
 
     def touch(self) -> None:
         self.updated_at = datetime.now(UTC).isoformat()
@@ -195,6 +219,12 @@ class WorkflowState:
         current = self.retry_counters.get(key, 0) + 1
         self.retry_counters[key] = current
         self.touch()
+        self.record_event(
+            "retry_incremented",
+            task_id=key,
+            status="retrying",
+            details={"retry_count": current},
+        )
         return current
 
     def set_session(
@@ -205,6 +235,36 @@ class WorkflowState:
         self.session_id = session_id
         self.parent_session_id = parent_session_id
         self.touch()
+        self.record_event(
+            "session_bound",
+            details={
+                "session_id": session_id,
+                "parent_session_id": parent_session_id,
+            },
+        )
+
+    def record_event(
+        self,
+        event_type: str,
+        *,
+        phase: str | None = None,
+        task_id: str | None = None,
+        agent_name: str | None = None,
+        status: str | None = None,
+        summary: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.execution_trace.append(
+            WorkflowTraceEvent(
+                event_type=event_type,
+                phase=phase or self.phase.value,
+                task_id=task_id,
+                agent_name=agent_name,
+                status=status,
+                summary=summary,
+                details=dict(details or {}),
+            )
+        )
 
     def can_finalize(self) -> bool:
         if self.open_questions:
@@ -236,6 +296,7 @@ class WorkflowState:
             "changed_files": list(self.changed_files),
             "open_questions": list(self.open_questions),
             "risks": list(self.risks),
+            "execution_trace_count": len(self.execution_trace),
             "updated_at": self.updated_at,
         }
 
@@ -311,4 +372,9 @@ def create_workflow_state(
     )
     for task in build_default_tasks():
         state.add_task(task)
+    state.record_event(
+        "workflow_initialized",
+        summary="Workflow state created with default task graph.",
+        details={"task_count": len(state.tasks)},
+    )
     return state

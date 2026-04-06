@@ -189,6 +189,19 @@ class Orchestrator:
         state: WorkflowState,
     ) -> AgentResult:
         """Dispatch a task to an agent."""
+        state.record_event(
+            "task_dispatched",
+            task_id=task.name,
+            agent_name=agent.agent_name,
+            status="in_progress",
+            summary=f"Dispatching {task.name} to {agent.agent_name}.",
+            details={
+                "objective": task.objective,
+                "input_keys": sorted(task.inputs.keys()),
+                "constraint_keys": sorted(task.constraints.keys()),
+                "metadata_keys": sorted(task.metadata.keys()),
+            },
+        )
         return await agent.run(task, state)
 
     def collect_results(self, state: WorkflowState) -> dict[str, Any]:
@@ -209,6 +222,7 @@ class Orchestrator:
             "open_questions": list(state.open_questions),
             "risks": list(state.risks),
             "changed_files": list(state.changed_files),
+            "execution_trace": [event.to_dict() for event in state.execution_trace],
         }
 
     def handle_failure(
@@ -222,6 +236,13 @@ class Orchestrator:
         state.set_phase(WorkflowPhase.FAILED)
         state.update_task_status(step_name, TaskStatus.FAILED, note=reason)
         state.add_note(f"{step_name} failed: {reason}")
+        state.record_event(
+            "task_failed",
+            task_id=step_name,
+            status=TaskStatus.FAILED.value,
+            summary=f"{step_name} failed.",
+            details={"reason": reason},
+        )
         return state
 
     def finalize(self, state: WorkflowState) -> dict[str, Any]:
@@ -271,13 +292,40 @@ class Orchestrator:
         for artifact in result.artifacts:
             state.add_artifact(artifact)
 
+        state.record_event(
+            "task_completed",
+            task_id=completed_step,
+            status=task.status.value,
+            summary=result.summary,
+            details={
+                "phase_after": phase.value,
+                "artifact_count": len(result.artifacts),
+                "risk_count": len([risk for risk in result.risks if risk]),
+                "open_question_count": len(
+                    [question for question in open_questions if question]
+                )
+                if isinstance(open_questions, list)
+                else 0,
+                "changed_file_count": len(
+                    [changed_file for changed_file in changed_files if changed_file]
+                )
+                if isinstance(changed_files, list)
+                else 0,
+                "output_keys": sorted(result.outputs.keys()),
+                "next_action_count": len(result.next_actions),
+                "metric_keys": sorted(result.metrics.keys()),
+            },
+        )
+
     def _finalize_success(self, state: WorkflowState) -> None:
+        skipped_dependencies: list[str] = []
         for dependency_id in ("documentation", "review"):
             dependency_task = state.require_task(dependency_id)
             if dependency_task.status == TaskStatus.PENDING:
                 dependency_task.mark_skipped(
                     "Dependency was not executed in the minimal orchestrator flow."
                 )
+                skipped_dependencies.append(dependency_id)
 
         finalization_task = state.require_task("finalization")
         finalization_task.mark_completed(
@@ -291,6 +339,19 @@ class Orchestrator:
         state.touch()
         state.set_phase(WorkflowPhase.COMPLETED)
         state.add_note("Workflow completed.")
+        state.record_event(
+            "workflow_completed",
+            task_id="finalization",
+            status=finalization_task.status.value,
+            summary="Workflow completed.",
+            details={
+                "skipped_dependencies": skipped_dependencies,
+                "final_artifact_count": len(state.artifacts),
+                "final_changed_file_count": len(state.changed_files),
+                "open_question_count": len(state.open_questions),
+                "risk_count": len(state.risks),
+            },
+        )
 
     def _build_workflow_id(self) -> str:
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
