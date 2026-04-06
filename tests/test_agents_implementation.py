@@ -72,6 +72,7 @@ def test_implementation_agent_generates_structured_proposal() -> None:
         "code_change_slice_count": 5,
         "downstream_consumer_count": 4,
         "open_question_count": 1,
+        "edit_proposal_count": 3,
     }
 
     outputs = result.outputs
@@ -151,6 +152,28 @@ def test_implementation_agent_generates_structured_proposal() -> None:
         "src/impliforge/**/*.py allowlisted edit proposals",
     ]
 
+    assert implementation["proposal_schema_version"] == "2.0"
+    assert implementation["safe_edit_bridge"] == {
+        "structured_editing_ready": True,
+        "default_consumability": "structured_code_editor",
+        "supported_consumers": [
+            "safe_edit_phase",
+            "structured_code_editor",
+        ],
+        "approval_policy_map": {
+            "docs_artifacts_only": {
+                "approval_required": True,
+                "allowed_roots": ["docs", "artifacts"],
+                "structured_code_editor_compatible": False,
+            },
+            "src_impliforge_structured_only": {
+                "approval_required": True,
+                "allowed_roots": ["src/impliforge"],
+                "structured_code_editor_compatible": True,
+            },
+        },
+    }
+
     downstream_handoff = implementation["downstream_handoff"]
     assert downstream_handoff == {
         "consumers": [
@@ -204,13 +227,27 @@ def test_implementation_agent_generates_structured_proposal() -> None:
     ]
     assert edit_proposals[0]["mode"] == "structured_update"
     assert edit_proposals[0]["targets"] == ["src/impliforge/main.py"]
+    assert edit_proposals[0]["instructions"] == [
+        "Keep the change small and limited to orchestration flow integration.",
+        "Do not edit files outside src/impliforge/ without an explicit policy update.",
+        "Re-run test_execution and review after applying the source edit.",
+    ]
+    assert edit_proposals[0]["approval_policy"] == "src_impliforge_structured_only"
+    assert edit_proposals[0]["safe_edit_scope"] == "src"
+    assert edit_proposals[0]["consumability"] == "structured_code_editor"
+    assert edit_proposals[0]["requires_explicit_approval"] is True
+    assert edit_proposals[0]["safe_edit_ready"] is True
     assert (
         edit_proposals[0]["edits"][0]["target_symbol"]
         == "SkeletonOrchestrator._build_safe_edit_operations"
     )
     assert edit_proposals[1]["targets"] == ["src/impliforge/runtime/editor.py"]
+    assert edit_proposals[1]["approval_policy"] == "src_impliforge_structured_only"
+    assert edit_proposals[1]["consumability"] == "structured_code_editor"
     assert edit_proposals[1]["edits"][0]["target_symbol"] == "SafeEditor.apply"
     assert edit_proposals[2]["targets"] == ["src/impliforge/agents/implementation.py"]
+    assert edit_proposals[2]["approval_policy"] == "src_impliforge_structured_only"
+    assert edit_proposals[2]["consumability"] == "structured_code_editor"
     assert edit_proposals[2]["edits"][0]["target_symbol"] == "ImplementationAgent.run"
 
 
@@ -261,6 +298,7 @@ def test_implementation_agent_uses_requirement_fallback_and_empty_excerpt() -> N
         "code_change_slice_count": 5,
         "downstream_consumer_count": 4,
         "open_question_count": 0,
+        "edit_proposal_count": 3,
     }
 
     implementation = result.outputs["implementation"]
@@ -277,6 +315,11 @@ def test_implementation_agent_uses_requirement_fallback_and_empty_excerpt() -> N
     ]
     assert implementation["open_questions"] == []
     assert implementation["copilot_response_excerpt"] == ""
+    assert implementation["proposal_schema_version"] == "2.0"
+    assert implementation["safe_edit_bridge"]["structured_editing_ready"] is True
+    assert implementation["safe_edit_bridge"]["default_consumability"] == (
+        "structured_code_editor"
+    )
     assert (
         implementation["downstream_handoff"]["executable_change_proposal_ready"] is True
     )
@@ -289,6 +332,12 @@ def test_implementation_agent_uses_requirement_fallback_and_empty_excerpt() -> N
         "review",
         "fixer",
     ]
+    assert all(
+        proposal["safe_edit_ready"] is True
+        and proposal["approval_policy"] == "src_impliforge_structured_only"
+        and proposal["consumability"] == "structured_code_editor"
+        for proposal in implementation["edit_proposals"]
+    )
 
 
 def test_implementation_agent_normalization_helpers() -> None:
@@ -343,3 +392,65 @@ def test_implementation_agent_normalization_helpers() -> None:
         },
     ]
     assert agent._normalize_task_breakdown("not-a-list") == []
+
+    assert agent._normalize_edits(
+        [
+            {
+                "edit_kind": "replace_block",
+                "target_symbol": "SafeEditor.apply",
+                "intent": "Update safe editor apply flow",
+            },
+            {
+                "edit_kind": "replace_block",
+                "target_symbol": "",
+                "intent": "missing symbol",
+            },
+            "skip",
+        ]
+    ) == [
+        {
+            "edit_kind": "replace_block",
+            "target_symbol": "SafeEditor.apply",
+            "intent": "Update safe editor apply flow",
+        }
+    ]
+
+    assert agent._build_edit_proposal(
+        proposal_id="proposal-1",
+        summary="Structured update",
+        targets=["src/impliforge/runtime/editor.py", ""],
+        instructions=[" keep scope small ", ""],
+        edits=[
+            {
+                "edit_kind": "replace_block",
+                "target_symbol": "SafeEditor.apply",
+                "intent": "Update safe editor apply flow",
+            },
+            {
+                "edit_kind": "",
+                "target_symbol": "ignored",
+                "intent": "ignored",
+            },
+        ],
+        approval_policy="src_impliforge_structured_only",
+        safe_edit_scope="src",
+        consumability="structured_code_editor",
+    ) == {
+        "proposal_id": "proposal-1",
+        "mode": "structured_update",
+        "summary": "Structured update",
+        "targets": ["src/impliforge/runtime/editor.py"],
+        "instructions": ["keep scope small"],
+        "edits": [
+            {
+                "edit_kind": "replace_block",
+                "target_symbol": "SafeEditor.apply",
+                "intent": "Update safe editor apply flow",
+            }
+        ],
+        "approval_policy": "src_impliforge_structured_only",
+        "safe_edit_scope": "src",
+        "consumability": "structured_code_editor",
+        "requires_explicit_approval": True,
+        "safe_edit_ready": True,
+    }

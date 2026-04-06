@@ -446,6 +446,72 @@ def test_approve_src_impliforge_only_denies_structured_security_risk_flag() -> N
     assert denied.reason == "structured risk flags require explicit human approval"
 
 
+def test_apply_denies_request_when_proposal_policy_disallows_target(
+    tmp_path: Path,
+) -> None:
+    _write_source(
+        tmp_path,
+        "src/impliforge/runtime/sample.py",
+        "value = 1\n",
+    )
+    editor = StructuredCodeEditor(
+        tmp_path,
+        policy=CodeEditingPolicy(require_approval=False),
+    )
+
+    result = editor.apply(
+        CodeEditRequest(
+            relative_path="src/impliforge/runtime/sample.py",
+            kind=CodeEditKind.REPLACE_SNIPPET,
+            reason="policy mismatch",
+            proposal_id="proposal-1",
+            approval_policy="docs_artifacts_only",
+            consumability="structured_code_editor",
+            old_snippet="value = 1",
+            new_snippet="value = 2",
+        )
+    )
+
+    assert result.ok is False
+    assert (
+        result.message
+        == "Structured code edit denied: proposal approval policy does not allow target src/impliforge/runtime/sample.py."
+    )
+
+
+def test_apply_denies_request_when_consumability_is_not_supported(
+    tmp_path: Path,
+) -> None:
+    _write_source(
+        tmp_path,
+        "src/impliforge/runtime/sample.py",
+        "value = 1\n",
+    )
+    editor = StructuredCodeEditor(
+        tmp_path,
+        policy=CodeEditingPolicy(require_approval=False),
+    )
+
+    result = editor.apply(
+        CodeEditRequest(
+            relative_path="src/impliforge/runtime/sample.py",
+            kind=CodeEditKind.REPLACE_SNIPPET,
+            reason="unsupported consumability",
+            proposal_id="proposal-2",
+            approval_policy="src_impliforge_structured_only",
+            consumability="safe_editor",
+            old_snippet="value = 1",
+            new_snippet="value = 2",
+        )
+    )
+
+    assert result.ok is False
+    assert (
+        result.message
+        == "Structured code edit denied: proposal consumability is not supported for target src/impliforge/runtime/sample.py."
+    )
+
+
 def test_insert_after_and_before_marker_require_inputs_and_marker_presence(
     tmp_path: Path,
 ) -> None:

@@ -146,6 +146,97 @@ def test_persist_documentation_and_text_outputs_only_write_non_blank_strings(
     assert (docs_dir / "test-plan.md").as_posix() in state.changed_files
 
 
+def test_persist_documentation_outputs_prefers_documentation_artifacts_metadata(
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "docs"
+    writer = WorkflowArtifactWriter(
+        docs_dir=docs_dir,
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+
+    writer.persist_documentation_outputs(
+        state=state,
+        result=result(
+            outputs={
+                "design_document": "# Legacy Design\n",
+                "runbook_document": "# Legacy Runbook\n",
+                "documentation_artifacts": [
+                    {
+                        "output_key": "design_document",
+                        "path": "docs/design.md",
+                        "persist_when": "success",
+                        "content": "# Design\n",
+                    },
+                    {
+                        "output_key": "runbook_document",
+                        "path": "docs/runbook.md",
+                        "persist_when": "success",
+                        "content": "# Runbook\n",
+                    },
+                    {
+                        "output_key": "ignored_document",
+                        "path": "artifacts/ignored.md",
+                        "persist_when": "success",
+                        "content": "# Ignore\n",
+                    },
+                    {
+                        "output_key": "blank_document",
+                        "path": "docs/blank.md",
+                        "persist_when": "success",
+                        "content": "   ",
+                    },
+                ],
+            }
+        ),
+    )
+
+    assert (docs_dir / "design.md").read_text(encoding="utf-8") == "# Design\n"
+    assert (docs_dir / "runbook.md").read_text(encoding="utf-8") == "# Runbook\n"
+    assert not (docs_dir / "blank.md").exists()
+    assert (docs_dir / "design.md").as_posix() in state.artifacts
+    assert (docs_dir / "runbook.md").as_posix() in state.changed_files
+
+
+def test_persist_text_output_uses_output_artifact_metadata_when_available(
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "docs"
+    writer = WorkflowArtifactWriter(
+        docs_dir=docs_dir,
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+
+    writer.persist_text_output(
+        state=state,
+        result=result(
+            outputs={
+                "test_plan_document": "# Legacy Test Plan\n",
+                "documentation_artifacts": [
+                    {
+                        "output_key": "test_plan_document",
+                        "path": "docs/test-plan.md",
+                        "persist_when": "success",
+                        "content": "# Test Plan\n",
+                    }
+                ],
+            }
+        ),
+        output_key="test_plan_document",
+        target_name="ignored-name.md",
+    )
+
+    assert (docs_dir / "ignored-name.md").read_text(
+        encoding="utf-8"
+    ) == "# Legacy Test Plan\n"
+    assert not (docs_dir / "test-plan.md").exists()
+    assert (docs_dir / "ignored-name.md").as_posix() in state.artifacts
+
+
 def make_failure_result(
     *,
     summary: str,
@@ -218,6 +309,93 @@ def test_result_to_dict_fills_required_failure_fields_when_blank(
         "metrics": {},
         "failure_category": "unknown_failure",
         "failure_cause": "No failure cause provided.",
+    }
+
+
+def test_result_to_dict_includes_normalized_output_artifacts_and_deduplicated_paths(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+
+    normalized = writer.result_to_dict(
+        result(
+            outputs={
+                "design_document": "# Design\n",
+                "test_plan_document": "# Test Plan\n",
+                "documentation_artifacts": [
+                    {
+                        "output_key": "design_document",
+                        "path": "docs/design.md",
+                        "persist_when": "success",
+                        "content": "# Design\n",
+                    },
+                    {
+                        "output_key": "design_document",
+                        "path": "docs/design.md",
+                        "persist_when": "always",
+                        "content": "# Duplicate Design\n",
+                    },
+                    {
+                        "output_key": "blank_document",
+                        "path": "docs/blank.md",
+                        "persist_when": "success",
+                        "content": "   ",
+                    },
+                ],
+            },
+            artifacts=["docs/design.md", "docs/test-plan.md"],
+        )
+    )
+
+    assert normalized == {
+        "status": "completed",
+        "summary": "ok",
+        "outputs": {
+            "design_document": "# Design\n",
+            "test_plan_document": "# Test Plan\n",
+            "documentation_artifacts": [
+                {
+                    "output_key": "design_document",
+                    "path": "docs/design.md",
+                    "persist_when": "success",
+                    "content": "# Design\n",
+                },
+                {
+                    "output_key": "design_document",
+                    "path": "docs/design.md",
+                    "persist_when": "always",
+                    "content": "# Duplicate Design\n",
+                },
+                {
+                    "output_key": "blank_document",
+                    "path": "docs/blank.md",
+                    "persist_when": "success",
+                    "content": "   ",
+                },
+            ],
+            "output_artifacts": [
+                {
+                    "path": "docs/design.md",
+                    "output_key": "design_document",
+                    "persist_when": "success",
+                },
+                {
+                    "path": "docs/test-plan.md",
+                    "output_key": "test_plan_document",
+                    "persist_when": "success",
+                },
+            ],
+        },
+        "artifacts": ["docs/design.md", "docs/test-plan.md"],
+        "next_actions": [],
+        "risks": [],
+        "metrics": {},
+        "failure_category": None,
+        "failure_cause": None,
     }
 
 

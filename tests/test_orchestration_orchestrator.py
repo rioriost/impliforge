@@ -155,6 +155,66 @@ def test_apply_result_success_collects_outputs_risks_and_artifacts() -> None:
     assert state.artifacts == ["artifacts/reqs.md"]
 
 
+def test_apply_result_success_merges_existing_outputs_and_collections() -> None:
+    state = make_state()
+    state.require_task("requirements_analysis").outputs.update(
+        {
+            "normalized_requirements": {
+                "objective": "x",
+                "constraints": ["existing"],
+            },
+            "changed_files": ["src/existing.py"],
+            "next_actions": ["keep-existing"],
+            "metrics": {"existing_metric": 1},
+        }
+    )
+    state.add_artifact("artifacts/existing.md")
+    state.add_risk("existing-risk")
+    state.add_open_question("existing-question")
+    state.add_changed_file("src/existing.py")
+
+    orchestrator = Orchestrator(
+        requirements_agent=DummyAgent("requirements", AgentResult.success("unused")),
+        planning_agent=DummyAgent("planner", AgentResult.success("unused")),
+    )
+    result = AgentResult.success(
+        "requirements refined",
+        outputs={
+            "normalized_requirements": {
+                "constraints": ["new"],
+                "acceptance": ["covered"],
+            },
+            "open_questions": ["new-question", "existing-question"],
+            "changed_files": ["src/new.py", "src/existing.py"],
+        },
+        artifacts=["artifacts/new.md", "artifacts/existing.md"],
+        risks=["new-risk", "existing-risk"],
+        next_actions=["follow-up", "keep-existing"],
+        metrics={"new_metric": 2},
+    )
+
+    orchestrator._apply_result(
+        state,
+        phase=WorkflowPhase.REQUIREMENTS_ANALYZED,
+        completed_step="requirements_analysis",
+        result=result,
+    )
+
+    task = state.require_task("requirements_analysis")
+    assert task.status == TaskStatus.COMPLETED
+    assert task.outputs["normalized_requirements"] == {
+        "objective": "x",
+        "constraints": ["existing", "new"],
+        "acceptance": ["covered"],
+    }
+    assert task.outputs["next_actions"] == ["follow-up", "keep-existing"]
+    assert task.outputs["metrics"] == {"new_metric": 2}
+    assert state.artifacts == ["artifacts/existing.md", "artifacts/new.md"]
+    assert state.risks == ["existing-risk", "new-risk"]
+    assert state.open_questions == ["existing-question", "new-question"]
+    assert state.changed_files == ["src/existing.py", "src/new.py"]
+
+
 def test_apply_result_failure_uses_unknown_failure_when_summary_empty() -> None:
     state = make_state()
     orchestrator = Orchestrator(
@@ -173,7 +233,7 @@ def test_apply_result_failure_uses_unknown_failure_when_summary_empty() -> None:
     assert state.phase == WorkflowPhase.FAILED
     assert state.require_task("planning").status == TaskStatus.FAILED
     assert state.notes[-1] == "planning failed: No summary provided."
-    assert state.open_questions == []
+    assert state.open_questions == ["ignored"]
 
 
 def test_dispatch_normalizes_blank_and_noisy_agent_result_fields() -> None:
@@ -274,25 +334,30 @@ def test_finalize_success_marks_pending_dependency_tasks_as_skipped() -> None:
 
     assert state.require_task("documentation").status == TaskStatus.SKIPPED
     assert state.require_task("review").status == TaskStatus.SKIPPED
-    assert state.require_task("finalization").status == TaskStatus.COMPLETED
+    assert state.require_task("finalization").status == TaskStatus.BLOCKED
     assert state.require_task("finalization").outputs["acceptance_gate"] == {
-        "ready_for_completion": True,
-        "failed_checks": [],
+        "ready_for_completion": False,
+        "failed_checks": ["workflow_execution_completed"],
+        "blocking_open_questions": False,
+        "blocking_tasks": [],
+        "incomplete_tasks": ["implementation", "test_design", "test_execution"],
     }
     assert state.require_task("finalization").outputs["next_actions"] == [
-        "Persist final workflow summary",
-        "Review generated artifacts",
+        "Resolve open questions and blocked workflow tasks before declaring completion",
+        "Complete any remaining in-progress workflow tasks",
     ]
-    assert state.phase == WorkflowPhase.COMPLETED
-    assert state.notes[-1] == "Workflow completed."
+    assert state.phase == WorkflowPhase.INITIALIZED
+    assert (
+        state.notes[-1] == "Workflow completion blocked pending acceptance readiness."
+    )
     assert state.execution_trace[-1].event_type == "workflow_completed"
     assert state.execution_trace[-1].task_id == "finalization"
-    assert state.execution_trace[-1].status == "completed"
+    assert state.execution_trace[-1].status == "blocked"
     assert state.execution_trace[-1].details["skipped_dependencies"] == [
         "documentation",
         "review",
     ]
-    assert state.execution_trace[-1].details["acceptance_ready"] is True
+    assert state.execution_trace[-1].details["acceptance_ready"] is False
 
 
 def test_finalize_success_blocks_when_acceptance_readiness_is_not_satisfied() -> None:
@@ -316,10 +381,17 @@ def test_finalize_success_blocks_when_acceptance_readiness_is_not_satisfied() ->
     )
     assert state.require_task("finalization").outputs["acceptance_gate"] == {
         "ready_for_completion": False,
-        "failed_checks": ["open_questions_resolved"],
+        "failed_checks": [
+            "open_questions_resolved",
+            "workflow_execution_completed",
+        ],
+        "blocking_open_questions": True,
+        "blocking_tasks": [],
+        "incomplete_tasks": ["implementation", "test_design", "test_execution"],
     }
     assert state.require_task("finalization").outputs["next_actions"] == [
         "Resolve open questions and blocked workflow tasks before declaring completion",
+        "Complete any remaining in-progress workflow tasks",
     ]
     assert state.phase == WorkflowPhase.INITIALIZED
     assert (
@@ -330,6 +402,39 @@ def test_finalize_success_blocks_when_acceptance_readiness_is_not_satisfied() ->
     assert state.execution_trace[-1].status == "blocked"
     assert state.execution_trace[-1].summary == "Workflow completion blocked."
     assert state.execution_trace[-1].details["acceptance_ready"] is False
+
+
+def test_finalize_success_blocks_when_non_terminal_tasks_remain() -> None:
+    state = make_state()
+    state.update_task_status("requirements_analysis", TaskStatus.COMPLETED)
+    state.update_task_status("planning", TaskStatus.COMPLETED)
+    state.update_task_status("documentation", TaskStatus.COMPLETED)
+    state.update_task_status("implementation", TaskStatus.COMPLETED)
+    state.update_task_status("test_design", TaskStatus.COMPLETED)
+    state.update_task_status("test_execution", TaskStatus.COMPLETED)
+    state.update_task_status("review", TaskStatus.IN_PROGRESS)
+
+    orchestrator = Orchestrator(
+        requirements_agent=DummyAgent("requirements", AgentResult.success("unused")),
+        planning_agent=DummyAgent("planner", AgentResult.success("unused")),
+    )
+
+    orchestrator._finalize_success(state)
+
+    finalization = state.require_task("finalization")
+    assert finalization.status == TaskStatus.BLOCKED
+    assert finalization.outputs["acceptance_gate"] == {
+        "ready_for_completion": False,
+        "failed_checks": ["workflow_execution_completed"],
+        "blocking_open_questions": False,
+        "blocking_tasks": [],
+        "incomplete_tasks": ["review"],
+    }
+    assert finalization.outputs["next_actions"] == [
+        "Resolve open questions and blocked workflow tasks before declaring completion",
+        "Complete any remaining in-progress workflow tasks",
+    ]
+    assert state.execution_trace[-1].details["incomplete_tasks"] == ["review"]
 
 
 def test_minimal_orchestrator_completes_and_skips_optional_tasks(
@@ -408,7 +513,7 @@ def test_minimal_orchestrator_marks_failure_on_agent_error(
         "requirements_analysis failed: requirements failed" == note
         for note in state.notes
     )
-    assert "missing requirement detail" not in state.open_questions
+    assert state.open_questions == ["missing requirement detail"]
     assert len(planning_agent.calls) == 0
 
 
@@ -486,10 +591,17 @@ def test_orchestrator_runs_all_configured_agents_and_collects_outputs(
 
     assert state.require_task("finalization").outputs["acceptance_gate"] == {
         "ready_for_completion": False,
-        "failed_checks": ["open_questions_resolved"],
+        "failed_checks": [
+            "open_questions_resolved",
+            "workflow_execution_completed",
+        ],
+        "blocking_open_questions": True,
+        "blocking_tasks": [],
+        "incomplete_tasks": ["test_design"],
     }
     assert state.require_task("finalization").outputs["next_actions"] == [
         "Resolve open questions and blocked workflow tasks before declaring completion",
+        "Complete any remaining in-progress workflow tasks",
     ]
 
     assert requirements_agent.calls[0].name == "requirements_analysis"

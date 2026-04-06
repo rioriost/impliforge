@@ -64,12 +64,26 @@ def test_run_builds_test_plan_document_and_metrics() -> None:
         "review agent に検証観点を渡す",
     ]
     assert "未解決の open questions" in result.risks[1]
+    assert "acceptance coverage" in result.risks[2]
 
     test_plan = result.outputs["test_plan"]
     assert test_plan["objective"] == "Validate orchestrator behavior"
+    assert test_plan["schema_version"] == "test_plan.v2"
     assert test_plan["acceptance_criteria"] == [
         "Artifacts are persisted",
         "Routing decisions are visible",
+    ]
+    assert test_plan["acceptance_coverage"] == [
+        {
+            "acceptance_criterion": "Artifacts are persisted",
+            "covered_by": ["acceptance-1"],
+            "coverage_status": "covered",
+        },
+        {
+            "acceptance_criterion": "Routing decisions are visible",
+            "covered_by": ["acceptance-2"],
+            "coverage_status": "covered",
+        },
     ]
     assert test_plan["constraints"] == [
         "Keep tests focused",
@@ -95,6 +109,9 @@ def test_run_builds_test_plan_document_and_metrics() -> None:
         "runbook_present": True,
     }
     assert test_plan["open_questions"] == ["Should review block completion?"]
+    assert test_plan["unresolved_concerns"] == [
+        "Open question remains unresolved: Should review block completion?"
+    ]
     assert len(test_plan["copilot_response_excerpt"]) == 500
     assert (
         test_plan["copilot_response_excerpt"]
@@ -108,21 +125,41 @@ def test_run_builds_test_plan_document_and_metrics() -> None:
     assert "slice-slice-1" in case_ids
     assert "risk-open-questions" in case_ids
 
+    acceptance_case = next(
+        item for item in test_plan["test_cases"] if item["case_id"] == "acceptance-1"
+    )
+    assert acceptance_case["covers_acceptance"] == ["Artifacts are persisted"]
+    assert acceptance_case["covers_slices"] == []
+
+    slice_case = next(
+        item for item in test_plan["test_cases"] if item["case_id"] == "slice-slice-1"
+    )
+    assert slice_case["covers_acceptance"] == []
+    assert slice_case["covers_slices"] == ["slice-1"]
+
     assert result.metrics == {
         "acceptance_criteria_count": 2,
+        "acceptance_coverage_count": 2,
         "task_breakdown_count": 1,
         "code_change_slice_count": 1,
         "test_case_count": len(test_plan["test_cases"]),
         "open_question_count": 1,
+        "unresolved_concern_count": 1,
     }
 
     document = result.outputs["test_plan_document"]
     assert document.startswith("# Test Plan\n")
     assert "## Objective\nValidate orchestrator behavior\n" in document
     assert "## Test Levels\n- unit:" in document
-    assert "## Acceptance Criteria Coverage\n- Artifacts are persisted" in document
+    assert (
+        "## Acceptance Criteria Coverage\n"
+        "- Artifacts are persisted [covered]\n"
+        "  - covered_by: acceptance-1\n" in document
+    )
     assert "## Test Cases\n- `unit-routing-selection` (unit):" in document
     assert "  - assertion: ModelRouter returns a selected_model" in document
+    assert "  - covers_acceptance: Artifacts are persisted" in document
+    assert "  - covers_slices: slice-1" in document
     assert "## Fixtures and Data\n- Sample requirement file" in document
     assert (
         "## Environment Assumptions\n"
@@ -145,6 +182,11 @@ def test_run_builds_test_plan_document_and_metrics() -> None:
         in document
     )
     assert "## Open Questions\n- Should review block completion?" in document
+    assert (
+        "## Unresolved Concerns\n"
+        "- Open question remains unresolved: Should review block completion?\n"
+        in document
+    )
     assert "## Copilot Draft Notes\n" in document
     assert document.endswith("\n")
 
@@ -178,14 +220,17 @@ def test_run_uses_state_requirement_and_handles_missing_optional_inputs() -> Non
 
     test_plan = result.outputs["test_plan"]
     assert test_plan["objective"] == "Requirement from workflow state"
+    assert test_plan["schema_version"] == "test_plan.v2"
     assert test_plan["constraints"] == []
     assert test_plan["acceptance_criteria"] == []
+    assert test_plan["acceptance_coverage"] == []
     assert test_plan["task_breakdown"] == []
     assert test_plan["code_change_slices"] == []
     assert test_plan["documentation_inputs"] == {
         "design_present": False,
         "runbook_present": False,
     }
+    assert test_plan["unresolved_concerns"] == []
     assert test_plan["copilot_response_excerpt"] == ""
 
     case_ids = [item["case_id"] for item in test_plan["test_cases"]]
@@ -201,15 +246,18 @@ def test_run_uses_state_requirement_and_handles_missing_optional_inputs() -> Non
 
     assert result.metrics == {
         "acceptance_criteria_count": 0,
+        "acceptance_coverage_count": 0,
         "task_breakdown_count": 0,
         "code_change_slice_count": 0,
         "test_case_count": 7,
         "open_question_count": 0,
+        "unresolved_concern_count": 0,
     }
 
     document = result.outputs["test_plan_document"]
     assert "## Acceptance Criteria Coverage\n- none\n" in document
     assert "## Open Questions\n- none\n" in document
+    assert "## Unresolved Concerns\n- none\n" in document
     assert "## Copilot Draft Notes\nNo additional notes.\n" in document
 
 
@@ -231,9 +279,16 @@ def test_render_helpers_and_normalizers_cover_notable_branches() -> None:
                 "level": "unit",
                 "objective": "",
                 "assertions": [],
+                "covers_acceptance": ["criterion-1"],
+                "covers_slices": ["slice-1"],
             },
         ]
-    ) == ["- `case-1` (unit): TBD", "  - assertion: none"]
+    ) == [
+        "- `case-1` (unit): TBD",
+        "  - assertion: none",
+        "  - covers_acceptance: criterion-1",
+        "  - covers_slices: slice-1",
+    ]
 
     assert agent._normalize_code_change_slices(
         [
@@ -269,6 +324,58 @@ def test_render_helpers_and_normalizers_cover_notable_branches() -> None:
             "objective": "objective",
             "depends_on": ["dep"],
         }
+    ]
+
+    assert agent._build_acceptance_coverage(
+        acceptance_criteria=["criterion-1", "criterion-2"],
+        test_cases=[
+            {"case_id": "case-1", "covers_acceptance": ["criterion-1"]},
+            {"case_id": "case-2", "covers_acceptance": []},
+        ],
+    ) == [
+        {
+            "acceptance_criterion": "criterion-1",
+            "covered_by": ["case-1"],
+            "coverage_status": "covered",
+        },
+        {
+            "acceptance_criterion": "criterion-2",
+            "covered_by": [],
+            "coverage_status": "planned_gap",
+        },
+    ]
+
+    assert agent._build_unresolved_concerns(
+        open_questions=["question-1"],
+        acceptance_coverage=[
+            {
+                "acceptance_criterion": "criterion-1",
+                "covered_by": ["case-1"],
+                "coverage_status": "covered",
+            },
+            {
+                "acceptance_criterion": "criterion-2",
+                "covered_by": [],
+                "coverage_status": "planned_gap",
+            },
+        ],
+        code_change_slices=[{"slice_id": "slice-1"}],
+    ) == [
+        "Open question remains unresolved: question-1",
+        "Acceptance criterion lacks explicit test coverage linkage: criterion-2",
+    ]
+
+    assert agent._render_acceptance_coverage(
+        [
+            {
+                "acceptance_criterion": "criterion-1",
+                "covered_by": ["case-1"],
+                "coverage_status": "covered",
+            }
+        ]
+    ) == [
+        "- criterion-1 [covered]",
+        "  - covered_by: case-1",
     ]
 
     assert agent._normalize_list([" a ", "", 3, None]) == ["a", "3", "None"]

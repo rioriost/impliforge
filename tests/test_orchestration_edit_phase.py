@@ -135,8 +135,13 @@ def test_edit_phase_applies_safe_and_structured_edits_and_records_paths(
             "implementation": {
                 "edit_proposals": [
                     {
+                        "proposal_id": "src-structured-editor-update",
+                        "summary": "Update editor apply path",
                         "targets": ["src/impliforge/runtime/editor.py"],
                         "instructions": ["apply structured update"],
+                        "approval_policy": "src_impliforge_structured_only",
+                        "consumability": "structured_code_editor",
+                        "safe_edit_ready": True,
                         "edits": [
                             {
                                 "edit_kind": "replace_block",
@@ -154,8 +159,13 @@ def test_edit_phase_applies_safe_and_structured_edits_and_records_paths(
             "fix_plan": {
                 "edit_proposals": [
                     {
+                        "proposal_id": "src-structured-implementation-update",
+                        "summary": "Update implementation agent",
                         "targets": ["src/impliforge/agents/implementation.py"],
                         "instructions": ["apply fix update"],
+                        "approval_policy": "src_impliforge_structured_only",
+                        "consumability": "structured_code_editor",
+                        "safe_edit_ready": True,
                         "edits": [
                             {
                                 "edit_kind": "replace_block",
@@ -222,11 +232,16 @@ def test_edit_phase_ignores_non_src_targets_in_fix_proposals(
         {
             "edit_proposals": [
                 {
+                    "proposal_id": "fix-structured-editor-update",
+                    "summary": "Update editor apply path",
                     "targets": [
                         "docs/design.md",
                         "src/impliforge/runtime/editor.py",
                     ],
                     "instructions": ["apply fix update"],
+                    "approval_policy": "src_impliforge_structured_only",
+                    "consumability": "structured_code_editor",
+                    "safe_edit_ready": True,
                     "edits": [
                         {
                             "edit_kind": "replace_block",
@@ -263,8 +278,13 @@ def test_edit_phase_builds_structured_code_edit_requests_with_risk_flags(
         {
             "edit_proposals": [
                 {
+                    "proposal_id": "src-structured-editor-update",
+                    "summary": "Update editor apply path",
                     "targets": ["src/impliforge/runtime/editor.py"],
                     "instructions": ["apply structured update"],
+                    "approval_policy": "src_impliforge_structured_only",
+                    "consumability": "structured_code_editor",
+                    "safe_edit_ready": True,
                     "risk_flags": [
                         "dependency_change",
                         "security_impact",
@@ -327,8 +347,13 @@ def test_edit_phase_records_note_when_structured_code_edit_is_denied(
             "implementation": {
                 "edit_proposals": [
                     {
+                        "proposal_id": "src-structured-editor-update",
+                        "summary": "Update editor apply path",
                         "targets": ["src/impliforge/runtime/editor.py"],
                         "instructions": ["apply structured update"],
+                        "approval_policy": "src_impliforge_structured_only",
+                        "consumability": "structured_code_editor",
+                        "safe_edit_ready": True,
                         "edits": [
                             {
                                 "edit_kind": "replace_block",
@@ -369,5 +394,8 @@ def test_edit_phase_records_note_when_structured_code_edit_is_denied(
     )
 
     assert code_editor.requests
+    assert code_editor.requests[0].proposal_id == "src-structured-editor-update"
+    assert code_editor.requests[0].approval_policy == "src_impliforge_structured_only"
+    assert code_editor.requests[0].consumability == "structured_code_editor"
     assert "src/impliforge/runtime/editor.py" not in state.changed_files
     assert any("safe edit phase" in note for note in state.notes)

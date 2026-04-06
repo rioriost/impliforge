@@ -52,9 +52,37 @@ def test_reviewer_run_success_path_without_fix_loop() -> None:
             },
             "test_plan": {
                 "test_cases": ["review success path", "report rendering"],
+                "acceptance_coverage": [
+                    {
+                        "acceptance_criterion": "Design is documented",
+                        "covered_by": ["acceptance-1"],
+                        "coverage_status": "covered",
+                    },
+                    {
+                        "acceptance_criterion": "Validation is defined",
+                        "covered_by": ["acceptance-2"],
+                        "coverage_status": "covered",
+                    },
+                ],
+                "open_questions": [],
+                "unresolved_concerns": [],
             },
             "test_results": {
                 "status": "provisional_passed",
+                "acceptance_coverage": [
+                    {
+                        "acceptance_criterion": "Design is documented",
+                        "covered_by": ["acceptance-1"],
+                        "coverage_status": "covered",
+                    },
+                    {
+                        "acceptance_criterion": "Validation is defined",
+                        "covered_by": ["acceptance-2"],
+                        "coverage_status": "covered",
+                    },
+                ],
+                "open_questions": [],
+                "unresolved_concerns": [],
             },
             "copilot_response": "Draft notes from Copilot.",
         }
@@ -74,6 +102,20 @@ def test_reviewer_run_success_path_without_fix_loop() -> None:
     assert review["severity"] == "ok"
     assert review["fix_loop_required"] is False
     assert review["unresolved_issues"] == []
+    assert review["acceptance_coverage"] == [
+        {
+            "acceptance_criterion": "Design is documented",
+            "covered_by": ["acceptance-1"],
+            "coverage_status": "covered",
+        },
+        {
+            "acceptance_criterion": "Validation is defined",
+            "covered_by": ["acceptance-2"],
+            "coverage_status": "covered",
+        },
+    ]
+    assert review["open_questions"] == []
+    assert review["unresolved_concerns"] == []
     assert review["fix_targets"] == [
         {
             "target_id": "recommendation-1",
@@ -100,10 +142,11 @@ def test_reviewer_run_success_path_without_fix_loop() -> None:
     assert result.metrics == {
         "acceptance_criteria_count": 2,
         "constraint_count": 1,
-        "finding_count": 10,
+        "finding_count": 12,
         "unresolved_issue_count": 0,
         "recommendation_count": 2,
         "fix_target_count": 2,
+        "acceptance_coverage_count": 2,
     }
 
     report = result.outputs["review_report"]
@@ -132,9 +175,18 @@ def test_reviewer_run_marks_fix_loop_and_collects_unresolved_issues() -> None:
             "plan": {"task_breakdown": []},
             "documentation_bundle": {},
             "implementation": {},
-            "test_plan": {},
+            "test_plan": {
+                "open_questions": ["Should this be gated?"],
+                "unresolved_concerns": [
+                    "Open question remains unresolved: Should this be gated?"
+                ],
+            },
             "test_results": {
                 "status": "failed",
+                "open_questions": ["Should this be gated?"],
+                "unresolved_concerns": [
+                    "Execution follow-up required: Focused pytest target failed"
+                ],
             },
             "copilot_response": "",
         }
@@ -158,7 +210,14 @@ def test_reviewer_run_marks_fix_loop_and_collects_unresolved_issues() -> None:
         "未解決の open questions が残っているため、実装前に確認が必要。",
         "実装戦略の記述が不足しており、変更方針が不明瞭。",
         "テスト計画に具体的な test cases が不足している。",
+        "acceptance coverage を評価する前提となる acceptance criteria が不足している。",
+        "テスト計画またはテスト結果に unresolved concerns が残っている。",
         "テスト結果が `failed` のため、追加確認または修正が必要。",
+    ]
+    assert review["open_questions"] == ["Should this be gated?"]
+    assert review["unresolved_concerns"] == [
+        "Open question remains unresolved: Should this be gated?",
+        "Execution follow-up required: Focused pytest target failed",
     ]
     assert review["fix_targets"][0] == {
         "target_id": "issue-1",
@@ -167,7 +226,7 @@ def test_reviewer_run_marks_fix_loop_and_collects_unresolved_issues() -> None:
         "action": "Generate a focused fix proposal and re-run validation.",
     }
     assert review["fix_targets"][-1] == {
-        "target_id": "issue-10",
+        "target_id": "issue-12",
         "source": "review",
         "summary": "テスト結果が `failed` のため、追加確認または修正が必要。",
         "action": "Generate a focused fix proposal and re-run validation.",
@@ -182,28 +241,37 @@ def test_reviewer_run_marks_fix_loop_and_collects_unresolved_issues() -> None:
         "implementation proposal に具体的な code change slices を追加する",
         "implementation strategy を補強してから test_design に進む",
         "test_plan に具体的な test cases を追加して検証観点を補強する",
+        "test_plan / test_results の unresolved concerns を fix loop に送り、再確認する",
         "test_results の未解決項目を fix loop に送り、再テストする",
     ]
     assert result.risks == [
         "レビューで未解決事項が残っているため、実装完了判定は保留",
-        "要件上の open questions が残っており、対応方針も未確定のため、レビュー結果は暫定",
+        "要件上またはテスト出力上の open questions が残っており、対応方針も未確定のため、レビュー結果は暫定",
         "warning 以上のレビュー結果のため、fix loop が必要",
     ]
     assert result.metrics == {
         "acceptance_criteria_count": 0,
         "constraint_count": 0,
-        "finding_count": 10,
-        "unresolved_issue_count": 10,
-        "recommendation_count": 7,
-        "fix_target_count": 10,
+        "finding_count": 12,
+        "unresolved_issue_count": 12,
+        "recommendation_count": 8,
+        "fix_target_count": 12,
+        "acceptance_coverage_count": 0,
     }
 
     report = result.outputs["review_report"]
     assert "Fallback objective from workflow state" in report
     assert "## Open Questions" in report
     assert "- Should this be gated?" in report
+    assert "## Unresolved Concerns" in report
+    assert "- Open question remains unresolved: Should this be gated?" in report
+    assert "- Execution follow-up required: Focused pytest target failed" in report
     assert "## Recommendations" in report
     assert "- open questions を解消してから実コード変更に進む" in report
+    assert (
+        "- test_plan / test_results の unresolved concerns を fix loop に送り、再確認する"
+        in report
+    )
     assert "- test_results の未解決項目を fix loop に送り、再テストする" in report
     assert "## Risks" in report
     assert "- レビューで未解決事項が残っているため、実装完了判定は保留" in report
@@ -243,9 +311,17 @@ def test_reviewer_run_failure_reporting_keeps_recommendations_and_risks_visible(
             },
             "test_plan": {
                 "test_cases": ["failure reporting path"],
+                "open_questions": ["Who approves the retry?"],
+                "unresolved_concerns": [
+                    "Open question remains unresolved: Who approves the retry?"
+                ],
             },
             "test_results": {
                 "status": "failed",
+                "open_questions": ["Who approves the retry?"],
+                "unresolved_concerns": [
+                    "Execution follow-up required: Blocking issues remain"
+                ],
             },
             "copilot_response": "Highlight the blocking issues and next actions.",
         }
@@ -258,6 +334,10 @@ def test_reviewer_run_failure_reporting_keeps_recommendations_and_risks_visible(
     assert result.outputs["review"]["severity"] == "needs_follow_up"
     assert result.next_actions[0] == "open questions を解消してから実コード変更に進む"
     assert (
+        "test_plan / test_results の unresolved concerns を fix loop に送り、再確認する"
+        in result.next_actions
+    )
+    assert (
         "test_results の未解決項目を fix loop に送り、再テストする"
         in result.next_actions
     )
@@ -266,6 +346,10 @@ def test_reviewer_run_failure_reporting_keeps_recommendations_and_risks_visible(
     report = result.outputs["review_report"]
     assert "## Recommendations" in report
     assert "- open questions を解消してから実コード変更に進む" in report
+    assert (
+        "- test_plan / test_results の unresolved concerns を fix loop に送り、再確認する"
+        in report
+    )
     assert "- test_results の未解決項目を fix loop に送り、再テストする" in report
     assert "## Risks" in report
     assert "- warning 以上のレビュー結果のため、fix loop が必要" in report

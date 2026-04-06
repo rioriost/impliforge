@@ -67,10 +67,27 @@ def test_documentation_agent_generates_design_and_runbook_outputs() -> None:
         "open_question_count": 1,
         "resolved_decision_count": 1,
         "task_breakdown_count": 2,
+        "documentation_artifact_count": 2,
     }
 
     outputs = result.outputs
     assert outputs["documentation_targets"] == ["docs/design.md", "docs/runbook.md"]
+    assert outputs["documentation_artifacts"] == [
+        {
+            "output_key": "design_document",
+            "path": "docs/design.md",
+            "title": "Design",
+            "persist_when": "success",
+            "content": outputs["design_document"],
+        },
+        {
+            "output_key": "runbook_document",
+            "path": "docs/runbook.md",
+            "title": "Runbook",
+            "persist_when": "success",
+            "content": outputs["runbook_document"],
+        },
+    ]
     assert outputs["open_questions"] == ["How should approval escalation work?"]
     assert outputs["resolved_decisions"] == ["Persist structured state only"]
     assert outputs["documentation_bundle"]["design"] == outputs["design_document"]
@@ -218,9 +235,26 @@ def test_documentation_agent_uses_fallbacks_and_open_question_branch() -> None:
         "open_question_count": 1,
         "resolved_decision_count": 0,
         "task_breakdown_count": 1,
+        "documentation_artifact_count": 2,
     }
 
     outputs = result.outputs
+    assert outputs["documentation_artifacts"] == [
+        {
+            "output_key": "design_document",
+            "path": "docs/design.md",
+            "title": "Design",
+            "persist_when": "success",
+            "content": outputs["design_document"],
+        },
+        {
+            "output_key": "runbook_document",
+            "path": "docs/runbook.md",
+            "title": "Runbook",
+            "persist_when": "success",
+            "content": outputs["runbook_document"],
+        },
+    ]
     assert outputs["open_questions"] == ["Need approval owner"]
     assert outputs["resolved_decisions"] == []
 

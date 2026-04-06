@@ -15,6 +15,8 @@ from impliforge.runtime.editor import (
     SafeEditor,
     approve_docs_and_artifacts_only,
     approve_docs_artifacts_and_src_impliforge,
+    proposal_consumability_is_structured,
+    proposal_policy_requires_explicit_approval,
 )
 
 
@@ -509,3 +511,102 @@ def test_scoped_src_approval_hook_denies_structured_secret_risk_flag() -> None:
         result.reason
         == "secret-like content detected; explicit human approval is required"
     )
+
+
+def test_editor_policy_maps_proposal_policy_and_consumability() -> None:
+    policy = EditorPolicy(
+        allowed_roots=("docs", "artifacts"),
+        protected_roots=(".git", ".venv"),
+        src_allowed_prefixes=("src/impliforge",),
+    )
+
+    assert (
+        policy.approval_policy_allows("docs_artifacts_only", "docs/design.md") is True
+    )
+    assert (
+        policy.approval_policy_allows(
+            "docs_artifacts_only", "src/impliforge/runtime/editor.py"
+        )
+        is False
+    )
+    assert (
+        policy.approval_policy_allows(
+            "src_impliforge_structured_only", "src/impliforge/runtime/editor.py"
+        )
+        is True
+    )
+    assert (
+        policy.approval_policy_allows(
+            "src_impliforge_structured_only", "artifacts/run.json"
+        )
+        is False
+    )
+
+    assert policy.supports_consumability("safe_editor", "docs/design.md") is True
+    assert (
+        policy.supports_consumability(
+            "structured_code_editor", "src/impliforge/runtime/editor.py"
+        )
+        is True
+    )
+    assert (
+        policy.supports_consumability("structured_code_editor", "docs/design.md")
+        is False
+    )
+    assert policy.supports_consumability("unknown", "docs/design.md") is False
+
+
+def test_apply_rejects_policy_mismatch_for_docs_target(tmp_path: Path) -> None:
+    editor = SafeEditor(tmp_path)
+
+    result = editor.apply(
+        EditRequest(
+            relative_path="docs/design.md",
+            operation=EditOperationKind.WRITE,
+            content="# Design\n",
+            approval_policy="src_impliforge_structured_only",
+            consumability="safe_editor",
+        )
+    )
+
+    assert result.ok is False
+    assert result.changed is False
+    assert (
+        "proposal approval policy does not allow target docs/design.md"
+        in result.message
+    )
+
+
+def test_apply_rejects_unsupported_consumability_for_docs_target(
+    tmp_path: Path,
+) -> None:
+    editor = SafeEditor(tmp_path)
+
+    result = editor.apply(
+        EditRequest(
+            relative_path="docs/design.md",
+            operation=EditOperationKind.WRITE,
+            content="# Design\n",
+            approval_policy="docs_artifacts_only",
+            consumability="structured_code_editor",
+        )
+    )
+
+    assert result.ok is False
+    assert result.changed is False
+    assert (
+        "proposal consumability is not supported for target docs/design.md"
+        in result.message
+    )
+
+
+def test_proposal_policy_helper_functions_cover_known_values() -> None:
+    assert proposal_policy_requires_explicit_approval("docs_artifacts_only") is True
+    assert (
+        proposal_policy_requires_explicit_approval("src_impliforge_structured_only")
+        is True
+    )
+    assert proposal_policy_requires_explicit_approval("unknown") is False
+
+    assert proposal_consumability_is_structured("structured_code_editor") is True
+    assert proposal_consumability_is_structured("safe_editor") is False
