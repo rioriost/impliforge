@@ -29,7 +29,7 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 ## Acceptance Criteria
 - A multi-agent workflow exists with an orchestrator
 - Session rotation can preserve context through persistence
-- Planning, implementation, testing, and review are represented
+- Planning, source-code implementation, test-code implementation, testing, and review are represented
 - Artifact persistence and safe edit execution are separated from phase sequencing logic
 
 ## Inferred Capabilities
@@ -38,6 +38,7 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 - documentation
 - implementation
 - test_design
+- test_implementation
 - test_execution
 - review
 - fix
@@ -51,11 +52,12 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 3. documentation
 4. implementation
 5. test design
-6. test execution
-7. review
-8. fix loop
-9. safe edit phase
-10. final artifact persistence and completion evidence generation
+6. test implementation
+7. test execution
+8. review
+9. fix loop
+10. safe edit phase
+11. final artifact persistence and completion evidence generation
 
 ## Task Breakdown
 - `requirements_analysis`: Normalize the incoming requirement and extract constraints.
@@ -68,9 +70,11 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
   - depends_on: planning
 - `test_design`: Define test cases and validation strategy.
   - depends_on: planning
+- `test_implementation`: Implement and update test code, fixtures, and test helpers based on the plan and implementation diff.
+  - depends_on: planning, implementation, test_design
 - `test_execution`: Run tests and collect validation results.
-  - depends_on: implementation, test_design
-- `review`: Review implementation quality, risks, and acceptance coverage.
+  - depends_on: implementation, test_implementation
+- `review`: Review implementation quality, risks, acceptance coverage, and source/test alignment.
   - depends_on: implementation, test_execution
 - `fix`: Generate focused fix slices and revalidation guidance when review requires follow-up.
   - depends_on: review, test_execution
@@ -78,33 +82,34 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
   - depends_on: documentation, review, fix
 
 ## Current Implementation Shape
-- `src/devagents/main.py`
+- `src/impliforge/main.py`
   - `SkeletonOrchestrator` が workflow の phase 順序、依存注入、session rotation の呼び出しを担当する
   - phase 実行は `_execute_phase` に共通化され、routing / Copilot request / agent dispatch / result 適用をまとめて扱う
   - fix loop 成功後は rerun 済み implementation / test / review 結果を completion 側へ引き継ぐ
-- `src/devagents/orchestration/artifact_writer.py`
+- `src/impliforge/orchestration/artifact_writer.py`
   - `WorkflowArtifactWriter` が design/runbook/test/review/fix の文書出力、final summary 生成、workflow state / session snapshot / run summary 保存を担当する
   - acceptance gate、completion evidence、operator checklist evidence、approval risk summary、failure visibility を生成する
   - `artifacts/workflows/<workflow_id>/workflow-details.json` を保存する
-- `src/devagents/orchestration/edit_phase.py`
-  - `EditPhaseOrchestrator` が safe edit operations 構築、allowlisted file edits、structured code edit request 生成と適用を担当する
-- `src/devagents/orchestration/orchestrator.py`
+- `src/impliforge/orchestration/edit_phase.py`
+  - `EditPhaseOrchestrator` が safe edit operations 構築、allowlisted file edits、structured code edit request と structured test edit request の生成・適用を担当する
+- `src/impliforge/orchestration/orchestrator.py`
   - minimal orchestrator 実装を shared agent interfaces と canonical workflow state に揃えた参照実装として保持する
   - open questions や blocked/failed task が残る場合は acceptance-driven に completion を block する
-- `src/devagents/orchestration/workflow.py`
+- `src/impliforge/orchestration/workflow.py`
   - canonical な `WorkflowState`、`WorkflowTask`、phase / task status、default task graph を提供する
   - ready task / dependency blocker 可視化を提供する
-- `src/devagents/orchestration/session_manager.py`
+- `src/impliforge/orchestration/session_manager.py`
   - session snapshot、restore、rotation、resume prompt 生成を担当する
-- `src/devagents/orchestration/runtime_support.py`
+- `src/impliforge/orchestration/runtime_support.py`
   - session rotation helper、budget-like degraded routing、approval hook 連携を担当する
-- `src/devagents/models/routing.py`
+- `src/impliforge/models/routing.py`
   - task-aware routing、fallback metadata、routing reason を提供する
-- `src/devagents/runtime/copilot_client.py`
+- `src/impliforge/runtime/copilot_client.py`
   - Copilot SDK 呼び出しと environment preflight を担当する
-- `src/devagents/agents/`
-  - requirements / planner / documentation / implementation / test_design / reviewer / fixer が構造化出力を返す
-  - implementation agent は downstream handoff metadata を返す
+- `src/impliforge/agents/`
+  - requirements / planner / documentation / implementation / test_design / test_implementation / reviewer / fixer が構造化出力を返す
+  - implementation agent は source-code implementation の downstream handoff metadata を返す
+  - test implementation agent は implementation diff と test plan に基づいて test code / fixture / helper の変更提案を返す
   - fixer は unresolved question の resolved / deferred / unresolved 状態を fix report に反映する
   - documentation agent は blocked-state handling、escalation actions、budget-pressure guidance、artifact-volume guidance を runbook に反映する
 
@@ -128,7 +133,7 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 
 ## Approval Policy
 - 破壊的変更はデフォルトで自動承認しない。
-- `src/devagents/` 配下の allowlisted source edit は構造化 edit proposal と approval hook を通した場合のみ許可する。
+- `src/impliforge/` 配下の allowlisted source edit は構造化 edit proposal と approval hook を通した場合のみ許可する。
 - delete 操作、広範囲 overwrite、依存追加、実行環境変更は human approval を必須とする。
 - `docs/` と `artifacts/` への生成物保存は通常運用として許可するが、protected roots は常に対象外とする。
 

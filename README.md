@@ -1,6 +1,6 @@
-# devagents
+# impliforge
 
-`devagents` is an orchestrator-centric multi-agent workflow tool built on top of the GitHub Copilot SDK.
+`impliforge` is an orchestrator-centric multi-agent workflow tool built on top of the GitHub Copilot SDK.
 
 It treats requirement analysis, planning, documentation generation, implementation proposals, test design and execution, review, fix loops, and artifact persistence as one end-to-end workflow.
 
@@ -35,24 +35,24 @@ uv sync --extra test
 
 ## CLI Usage
 
-`devagents` accepts a **requirement file path** as its positional argument, not an inline requirement string.
+`impliforge` accepts a **requirement file path** as its positional argument, not an inline requirement string.
 
 ### Basic usage
 
 ```sh
-uv run devagents requirements/sample-requirement.md
+uv run impliforge requirements/sample-requirement.md
 ```
 
 Or run it as a module:
 
 ```sh
-uv run python -m devagents requirements/sample-requirement.md
+uv run python -m impliforge requirements/sample-requirement.md
 ```
 
 ### With options
 
 ```sh
-uv run devagents requirements/sample-requirement.md \
+uv run impliforge requirements/sample-requirement.md \
   --model gpt-5.4 \
   --routing-mode quality \
   --token-usage-ratio 0.35 \
@@ -85,7 +85,7 @@ The CLI exits with an error when:
 Example:
 
 ```sh
-uv run devagents requirements/missing.md
+uv run impliforge requirements/missing.md
 # error: requirement file not found: requirements/missing.md
 ```
 
@@ -121,7 +121,7 @@ uv run pytest -q tests
 Run tests with coverage:
 
 ```sh
-uv run pytest --cov=src/devagents --cov-report=term-missing:skip-covered -q tests
+uv run pytest --cov=src/impliforge --cov-report=term-missing:skip-covered -q tests
 ```
 
 ## Notes

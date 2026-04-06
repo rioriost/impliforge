@@ -1,4 +1,4 @@
-"""GitHub Copilot SDK client wrapper for devagents.
+"""GitHub Copilot SDK client wrapper for impliforge.
 
 This module adapts the public preview Python SDK to a small, stable interface
 used by the rest of this repository.
@@ -48,7 +48,7 @@ class CopilotClientConfig:
     max_retries: int = 1
     enable_sdk: bool = True
     dry_run_fallback: bool = True
-    application_name: str = "devagents"
+    application_name: str = "impliforge"
     user_agent_suffix: str = "skeleton"
     working_directory: str | None = None
     config_dir: str | None = None

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from devagents.agents.base import AgentTask
-from devagents.agents.planner import PlanningAgent
-from devagents.orchestration.workflow import create_workflow_state
+from impliforge.agents.base import AgentTask
+from impliforge.agents.planner import PlanningAgent
+from impliforge.orchestration.workflow import create_workflow_state
 
 
 def build_state():

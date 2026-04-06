@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from devagents.runtime.editor import (
+from impliforge.runtime.editor import (
     ApprovalDecision,
     ApprovalResult,
     EditOperationKind,
@@ -14,7 +14,7 @@ from devagents.runtime.editor import (
     EditRiskFlag,
     SafeEditor,
     approve_docs_and_artifacts_only,
-    approve_docs_artifacts_and_src_devagents,
+    approve_docs_artifacts_and_src_impliforge,
 )
 
 
@@ -22,22 +22,22 @@ def test_editor_policy_handles_allowlist_and_protected_src_paths() -> None:
     policy = EditorPolicy(
         allowed_roots=("docs", "artifacts"),
         protected_roots=(".git", ".venv"),
-        src_allowed_prefixes=("src/devagents",),
+        src_allowed_prefixes=("src/impliforge",),
     )
 
     assert policy.is_allowed_root("docs/design.md") is True
     assert policy.is_allowed_root("artifacts/run/output.json") is True
-    assert policy.is_allowed_root("src/devagents/runtime/editor.py") is True
+    assert policy.is_allowed_root("src/impliforge/runtime/editor.py") is True
     assert policy.is_allowed_root("src/other/module.py") is False
     assert policy.is_allowed_root("README.md") is False
 
     assert policy.is_protected_root(".git/config") is True
     assert policy.is_protected_root(".venv/bin/python") is True
     assert policy.is_protected_root("src/other/module.py") is True
-    assert policy.is_protected_root("src/devagents/runtime/editor.py") is False
+    assert policy.is_protected_root("src/impliforge/runtime/editor.py") is False
 
     assert policy.requires_src_approval("src") is True
-    assert policy.requires_src_approval("src/devagents/runtime/editor.py") is True
+    assert policy.requires_src_approval("src/impliforge/runtime/editor.py") is True
     assert policy.requires_src_approval("docs/design.md") is False
 
 
@@ -63,7 +63,7 @@ def test_apply_rejects_protected_src_path_even_if_src_root_is_allowed(
     editor = SafeEditor(
         tmp_path,
         allowed_roots=["docs", "artifacts", "src"],
-        src_allowed_prefixes=["src/devagents"],
+        src_allowed_prefixes=["src/impliforge"],
     )
 
     result = editor.apply(
@@ -231,7 +231,7 @@ def test_src_edit_requires_approval_and_denial_reason_is_propagated(
 
     result = editor.apply(
         EditRequest(
-            relative_path="src/devagents/runtime/generated.py",
+            relative_path="src/impliforge/runtime/generated.py",
             operation=EditOperationKind.WRITE,
             content="value = 1\n",
         )
@@ -241,7 +241,7 @@ def test_src_edit_requires_approval_and_denial_reason_is_propagated(
     assert result.changed is False
     assert result.message == "Edit denied: src edits blocked."
     assert len(calls) == 1
-    assert calls[0][0].relative_path == "src/devagents/runtime/generated.py"
+    assert calls[0][0].relative_path == "src/impliforge/runtime/generated.py"
 
 
 def test_preview_and_dry_run_report_changes_without_mutating_filesystem(
@@ -383,11 +383,11 @@ def test_conservative_approval_hook_only_allows_docs_and_artifacts_writes() -> N
     )
     outside_result = approve_docs_and_artifacts_only(
         EditRequest(
-            relative_path="src/devagents/runtime/editor.py",
+            relative_path="src/impliforge/runtime/editor.py",
             operation=EditOperationKind.WRITE,
             content="x = 1\n",
         ),
-        Path("/tmp/src/devagents/runtime/editor.py"),
+        Path("/tmp/src/impliforge/runtime/editor.py"),
     )
 
     assert docs_result.decision == ApprovalDecision.APPROVED
@@ -396,16 +396,16 @@ def test_conservative_approval_hook_only_allows_docs_and_artifacts_writes() -> N
     assert outside_result.decision == ApprovalDecision.DENIED
 
 
-def test_scoped_src_approval_hook_allows_src_devagents_but_denies_delete() -> None:
-    src_result = approve_docs_artifacts_and_src_devagents(
+def test_scoped_src_approval_hook_allows_src_impliforge_but_denies_delete() -> None:
+    src_result = approve_docs_artifacts_and_src_impliforge(
         EditRequest(
-            relative_path="src/devagents/runtime/editor.py",
+            relative_path="src/impliforge/runtime/editor.py",
             operation=EditOperationKind.WRITE,
             content="x = 1\n",
         ),
-        Path("/tmp/src/devagents/runtime/editor.py"),
+        Path("/tmp/src/impliforge/runtime/editor.py"),
     )
-    docs_result = approve_docs_artifacts_and_src_devagents(
+    docs_result = approve_docs_artifacts_and_src_impliforge(
         EditRequest(
             relative_path="docs/design.md",
             operation=EditOperationKind.APPEND,
@@ -413,14 +413,14 @@ def test_scoped_src_approval_hook_allows_src_devagents_but_denies_delete() -> No
         ),
         Path("/tmp/docs/design.md"),
     )
-    delete_result = approve_docs_artifacts_and_src_devagents(
+    delete_result = approve_docs_artifacts_and_src_impliforge(
         EditRequest(
-            relative_path="src/devagents/runtime/editor.py",
+            relative_path="src/impliforge/runtime/editor.py",
             operation=EditOperationKind.DELETE,
         ),
-        Path("/tmp/src/devagents/runtime/editor.py"),
+        Path("/tmp/src/impliforge/runtime/editor.py"),
     )
-    outside_result = approve_docs_artifacts_and_src_devagents(
+    outside_result = approve_docs_artifacts_and_src_impliforge(
         EditRequest(
             relative_path="src/other/module.py",
             operation=EditOperationKind.WRITE,
@@ -430,14 +430,14 @@ def test_scoped_src_approval_hook_allows_src_devagents_but_denies_delete() -> No
     )
 
     assert src_result.decision == ApprovalDecision.APPROVED
-    assert src_result.reason == "allowed by src/devagents scoped approval policy"
+    assert src_result.reason == "allowed by src/impliforge scoped approval policy"
     assert docs_result.decision == ApprovalDecision.APPROVED
     assert delete_result.decision == ApprovalDecision.DENIED
     assert delete_result.reason == "delete operations require explicit custom approval"
     assert outside_result.decision == ApprovalDecision.DENIED
     assert (
         outside_result.reason
-        == "target is outside approved src/devagents/docs/artifacts scope"
+        == "target is outside approved src/impliforge/docs/artifacts scope"
     )
 
 
@@ -459,13 +459,13 @@ def test_conservative_approval_hook_denies_secret_like_content() -> None:
 
 
 def test_scoped_src_approval_hook_denies_secret_like_content() -> None:
-    result = approve_docs_artifacts_and_src_devagents(
+    result = approve_docs_artifacts_and_src_impliforge(
         EditRequest(
-            relative_path="src/devagents/runtime/editor.py",
+            relative_path="src/impliforge/runtime/editor.py",
             operation=EditOperationKind.WRITE,
             content='password = "super-secret-value"\n',
         ),
-        Path("/tmp/src/devagents/runtime/editor.py"),
+        Path("/tmp/src/impliforge/runtime/editor.py"),
     )
 
     assert result.decision == ApprovalDecision.DENIED
@@ -494,14 +494,14 @@ def test_conservative_approval_hook_denies_structured_secret_risk_flag() -> None
 
 
 def test_scoped_src_approval_hook_denies_structured_secret_risk_flag() -> None:
-    result = approve_docs_artifacts_and_src_devagents(
+    result = approve_docs_artifacts_and_src_impliforge(
         EditRequest(
-            relative_path="src/devagents/runtime/editor.py",
+            relative_path="src/impliforge/runtime/editor.py",
             operation=EditOperationKind.WRITE,
             content="value = 1\n",
             risk_flags=(EditRiskFlag.SECRET_MATERIAL,),
         ),
-        Path("/tmp/src/devagents/runtime/editor.py"),
+        Path("/tmp/src/impliforge/runtime/editor.py"),
     )
 
     assert result.decision == ApprovalDecision.DENIED

@@ -1,6 +1,6 @@
-# devagents
+# impliforge
 
-`devagents` は、GitHub Copilot SDK を基盤にした orchestrator-centric なマルチエージェント実行ツール。
+`impliforge` は、GitHub Copilot SDK を基盤にした orchestrator-centric なマルチエージェント実行ツール。
 
 要件分析、計画、ドキュメント生成、実装提案、テスト設計・実行、レビュー、修正ループ、成果物保存までを一連の workflow として扱う。
 
@@ -33,24 +33,24 @@ uv sync --extra test
 
 ## CLI の使い方
 
-`devagents` は**要件文字列そのものではなく、要件を書いたファイルパス**を位置引数として受け取る。
+`impliforge` は**要件文字列そのものではなく、要件を書いたファイルパス**を位置引数として受け取る。
 
 ### 基本
 
 ```sh
-uv run devagents requirements/sample-requirement.md
+uv run impliforge requirements/sample-requirement.md
 ```
 
 または module 実行:
 
 ```sh
-uv run python -m devagents requirements/sample-requirement.md
+uv run python -m impliforge requirements/sample-requirement.md
 ```
 
 ### オプション付き
 
 ```sh
-uv run devagents requirements/sample-requirement.md \
+uv run impliforge requirements/sample-requirement.md \
   --model gpt-5.4 \
   --routing-mode quality \
   --token-usage-ratio 0.35 \
@@ -83,7 +83,7 @@ GitHub Copilot SDK を用いたマルチエージェント環境を構築する
 例:
 
 ```sh
-uv run devagents requirements/missing.md
+uv run impliforge requirements/missing.md
 # error: requirement file not found: requirements/missing.md
 ```
 
@@ -119,7 +119,7 @@ uv run pytest -q tests
 coverage:
 
 ```sh
-uv run pytest --cov=src/devagents --cov-report=term-missing:skip-covered -q tests
+uv run pytest --cov=src/impliforge --cov-report=term-missing:skip-covered -q tests
 ```
 
 ## 補足

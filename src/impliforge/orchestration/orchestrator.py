@@ -1,4 +1,4 @@
-"""Core orchestrator for the devagents multi-agent workflow."""
+"""Core orchestrator for the impliforge multi-agent workflow."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from devagents.agents.base import AgentResult, AgentTask
-from devagents.orchestration.workflow import (
+from impliforge.agents.base import AgentResult, AgentTask
+from impliforge.orchestration.workflow import (
     TaskStatus,
     WorkflowPhase,
     WorkflowState,

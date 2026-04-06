@@ -6,10 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from devagents.agents.base import AgentResult
-from devagents.orchestration.session_manager import SessionManager
-from devagents.orchestration.state_store import StateStore
-from devagents.orchestration.workflow import TaskStatus, WorkflowPhase, WorkflowState
+from impliforge.agents.base import AgentResult
+from impliforge.orchestration.session_manager import SessionManager
+from impliforge.orchestration.state_store import StateStore
+from impliforge.orchestration.workflow import TaskStatus, WorkflowPhase, WorkflowState
 
 
 class WorkflowArtifactWriter:

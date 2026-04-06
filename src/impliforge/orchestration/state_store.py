@@ -1,4 +1,4 @@
-"""Persistent state storage for devagents workflow artifacts and snapshots."""
+"""Persistent state storage for impliforge workflow artifacts and snapshots."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from devagents.orchestration.workflow import SessionSnapshot, WorkflowState
+from impliforge.orchestration.workflow import SessionSnapshot, WorkflowState
 
 
 class StateStore:

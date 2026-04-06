@@ -1,4 +1,4 @@
-"""Workflow state models for the devagents orchestration layer."""
+"""Workflow state models for the impliforge orchestration layer."""
 
 from __future__ import annotations
 

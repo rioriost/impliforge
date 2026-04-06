@@ -1,4 +1,4 @@
-"""Safe editing runtime for devagents.
+"""Safe editing runtime for impliforge.
 
 This module provides a minimal, file-system based editing layer that can be used
 by the orchestrator before connecting to richer code-editing capabilities.
@@ -27,7 +27,7 @@ from typing import Callable
 
 DEFAULT_ALLOWED_ROOTS = ("docs", "artifacts")
 DEFAULT_PROTECTED_ROOTS = (".git", ".venv")
-DEFAULT_SRC_ALLOWED_PREFIXES = ("src/devagents",)
+DEFAULT_SRC_ALLOWED_PREFIXES = ("src/impliforge",)
 SECRET_DETECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token)\s*=\s*['\"][^'\"]+['\"]"
@@ -614,15 +614,15 @@ def approve_docs_and_artifacts_only(
     )
 
 
-def approve_docs_artifacts_and_src_devagents(
+def approve_docs_artifacts_and_src_impliforge(
     request: EditRequest, absolute_path: Path
 ) -> ApprovalResult:
-    """Approval hook that also allows limited edits under `src/devagents/`.
+    """Approval hook that also allows limited edits under `src/impliforge/`.
 
     Rules:
     - deny deletes by default
     - allow writes/appends under `docs/` and `artifacts/`
-    - allow writes/appends under `src/devagents/`
+    - allow writes/appends under `src/impliforge/`
     - deny everything else
     """
     relative_path = request.normalized_relative_path()
@@ -645,7 +645,7 @@ def approve_docs_artifacts_and_src_devagents(
             reason="allowed by docs/artifacts policy",
         )
 
-    if relative_path == "src/devagents" or relative_path.startswith("src/devagents/"):
+    if relative_path == "src/impliforge" or relative_path.startswith("src/impliforge/"):
         secret_detection_reason = _find_secret_like_content(request)
         if secret_detection_reason is not None or has_edit_risk_flag(
             request, EditRiskFlag.SECRET_MATERIAL
@@ -659,17 +659,17 @@ def approve_docs_artifacts_and_src_devagents(
             )
         return ApprovalResult(
             decision=ApprovalDecision.APPROVED,
-            reason="allowed by src/devagents scoped approval policy",
+            reason="allowed by src/impliforge scoped approval policy",
         )
 
     return ApprovalResult(
         decision=ApprovalDecision.DENIED,
-        reason="target is outside approved src/devagents/docs/artifacts scope",
+        reason="target is outside approved src/impliforge/docs/artifacts scope",
     )
 
 
 # SAFE-EDIT-NOTE
-# Proposed implementation slice: Promote approved implementation proposals into allowlisted source edits under src/devagents/.
+# Proposed implementation slice: Promote approved implementation proposals into allowlisted source edits under src/impliforge/.
 
 # SAFE-EDIT-FIX-NOTE
 # Proposed fix slice: 未解決の open questions が残っているため、実装前に確認が必要。

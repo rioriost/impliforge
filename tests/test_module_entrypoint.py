@@ -13,9 +13,9 @@ def test_module_entrypoint_invokes_main_and_exits(monkeypatch) -> None:
 
     import importlib
 
-    import devagents
+    import impliforge
 
-    main_module = importlib.import_module("devagents.main")
+    main_module = importlib.import_module("impliforge.main")
 
     calls: list[str] = []
 
@@ -24,10 +24,10 @@ def test_module_entrypoint_invokes_main_and_exits(monkeypatch) -> None:
         return 7
 
     monkeypatch.setattr(main_module, "main", fake_main)
-    monkeypatch.setattr(devagents, "main", fake_main)
+    monkeypatch.setattr(impliforge, "main", fake_main)
 
     try:
-        runpy.run_module("devagents", run_name="__main__")
+        runpy.run_module("impliforge", run_name="__main__")
         raise AssertionError("Expected SystemExit to be raised")
     except SystemExit as exc:
         assert exc.code == 7

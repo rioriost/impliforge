@@ -11,37 +11,37 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from devagents.agents.base import AgentResult, AgentTask
-from devagents.agents.documentation import DocumentationAgent
-from devagents.agents.fixer import FixerAgent
-from devagents.agents.implementation import ImplementationAgent
-from devagents.agents.planner import PlanningAgent
-from devagents.agents.requirements import RequirementsAgent
-from devagents.agents.reviewer import ReviewAgent
-from devagents.agents.test_design import TestDesignAgent
-from devagents.agents.test_execution import TestExecutionAgent
-from devagents.models.routing import ModelRouter, RoutingMode
-from devagents.orchestration.artifact_writer import WorkflowArtifactWriter
-from devagents.orchestration.edit_phase import EditPhaseOrchestrator
-from devagents.orchestration.runtime_support import RuntimeSupport
-from devagents.orchestration.session_manager import SessionManager
-from devagents.orchestration.state_store import StateStore
-from devagents.orchestration.workflow import (
+from impliforge.agents.base import AgentResult, AgentTask
+from impliforge.agents.documentation import DocumentationAgent
+from impliforge.agents.fixer import FixerAgent
+from impliforge.agents.implementation import ImplementationAgent
+from impliforge.agents.planner import PlanningAgent
+from impliforge.agents.requirements import RequirementsAgent
+from impliforge.agents.reviewer import ReviewAgent
+from impliforge.agents.test_design import TestDesignAgent
+from impliforge.agents.test_execution import TestExecutionAgent
+from impliforge.models.routing import ModelRouter, RoutingMode
+from impliforge.orchestration.artifact_writer import WorkflowArtifactWriter
+from impliforge.orchestration.edit_phase import EditPhaseOrchestrator
+from impliforge.orchestration.runtime_support import RuntimeSupport
+from impliforge.orchestration.session_manager import SessionManager
+from impliforge.orchestration.state_store import StateStore
+from impliforge.orchestration.workflow import (
     TaskStatus,
     WorkflowPhase,
     WorkflowState,
     create_workflow_state,
 )
-from devagents.runtime.code_editing import (
+from impliforge.runtime.code_editing import (
     StructuredCodeEditor,
-    approve_src_devagents_only,
+    approve_src_impliforge_only,
 )
-from devagents.runtime.copilot_client import (
+from impliforge.runtime.copilot_client import (
     CopilotClient,
     CopilotRequest,
     CopilotTaskType,
 )
-from devagents.runtime.editor import EditorPolicy, SafeEditor
+from impliforge.runtime.editor import EditorPolicy, SafeEditor
 
 ARTIFACTS_DIR = Path("artifacts")
 DOCS_DIR = Path("docs")
@@ -96,7 +96,7 @@ class SkeletonOrchestrator:
         )
         self.code_editor = StructuredCodeEditor(
             workspace_root=Path.cwd(),
-            approval_hook=approve_src_devagents_only,
+            approval_hook=approve_src_impliforge_only,
         )
         self.runtime_support = RuntimeSupport(
             state_store=self.state_store,
@@ -1190,8 +1190,8 @@ class SkeletonOrchestrator:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="devagents",
-        description="Run the devagents multi-agent workflow.",
+        prog="impliforge",
+        description="Run the impliforge multi-agent workflow.",
     )
     parser.add_argument(
         "requirement_file",
@@ -1306,7 +1306,7 @@ if __name__ == "__main__":
 # Proposed implementation slice: Wire documentation and implementation phases into the orchestrator.
 
 # SAFE-EDIT-NOTE
-# Proposed implementation slice: Promote approved implementation proposals into allowlisted source edits under src/devagents/.
+# Proposed implementation slice: Promote approved implementation proposals into allowlisted source edits under src/impliforge/.
 
 # SAFE-EDIT-FIX-NOTE
 # Proposed fix slice: 未解決の open questions が残っているため、実装前に確認が必要。

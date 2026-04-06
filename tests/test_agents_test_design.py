@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from devagents.agents.base import AgentTask
-from devagents.agents.test_design import TestDesignAgent
-from devagents.orchestration.workflow import WorkflowState
+from impliforge.agents.base import AgentTask
+from impliforge.agents.test_design import TestDesignAgent
+from impliforge.orchestration.workflow import WorkflowState
 
 
 def _state(requirement: str = "Fallback workflow requirement") -> WorkflowState:
@@ -40,7 +40,7 @@ def test_run_builds_test_plan_document_and_metrics() -> None:
                     {
                         "slice_id": "slice-1",
                         "goal": "Cover success path",
-                        "targets": ["devagents/tests/test_agents_test_design.py"],
+                        "targets": ["impliforge/tests/test_agents_test_design.py"],
                         "depends_on": ["plan-1"],
                     }
                 ]
@@ -86,7 +86,7 @@ def test_run_builds_test_plan_document_and_metrics() -> None:
         {
             "slice_id": "slice-1",
             "goal": "Cover success path",
-            "targets": ["devagents/tests/test_agents_test_design.py"],
+            "targets": ["impliforge/tests/test_agents_test_design.py"],
             "depends_on": ["plan-1"],
         }
     ]
@@ -133,8 +133,8 @@ def test_run_builds_test_plan_document_and_metrics() -> None:
     )
     assert (
         "## Validation Commands\n"
-        "- uv run python -m devagents requirements/sample-requirement.md --routing-mode quality\n"
-        "- uv run python -m devagents requirements/sample-requirement.md --token-usage-ratio 0.9\n"
+        "- uv run python -m impliforge requirements/sample-requirement.md --routing-mode quality\n"
+        "- uv run python -m impliforge requirements/sample-requirement.md --token-usage-ratio 0.9\n"
         in document
     )
     assert (

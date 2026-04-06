@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from devagents.agents.base import AgentTask
-from devagents.agents.implementation import ImplementationAgent
-from devagents.orchestration.workflow import create_workflow_state
+from impliforge.agents.base import AgentTask
+from impliforge.agents.implementation import ImplementationAgent
+from impliforge.orchestration.workflow import create_workflow_state
 
 
 def build_state():
@@ -58,7 +58,7 @@ def test_implementation_agent_generates_structured_proposal() -> None:
         "Add documentation and implementation agents to the orchestrator",
         "Persist generated design and implementation proposal artifacts",
         "Extend the workflow into test_design, test_execution, and review phases",
-        "Promote structured src/devagents edit proposals into the safe edit phase",
+        "Promote structured src/impliforge edit proposals into the safe edit phase",
     ]
     assert result.risks == [
         "実コード変更前に承認フローが未確定だと、破壊的変更の扱いが曖昧になる",
@@ -114,11 +114,11 @@ def test_implementation_agent_generates_structured_proposal() -> None:
     proposed_modules = implementation["proposed_modules"]
     assert len(proposed_modules) == 6
     assert proposed_modules[0] == {
-        "path": "src/devagents/agents/implementation.py",
+        "path": "src/impliforge/agents/implementation.py",
         "purpose": "Generate implementation proposals and concrete code-change slices.",
     }
     assert proposed_modules[-1] == {
-        "path": "src/devagents/runtime/editor.py",
+        "path": "src/impliforge/runtime/editor.py",
         "purpose": "Apply allowlisted edits safely to docs, artifacts, and approved source files.",
     }
 
@@ -131,16 +131,16 @@ def test_implementation_agent_generates_structured_proposal() -> None:
         "src-allowlisted-edit-phase",
     ]
     assert code_change_slices[0]["targets"] == [
-        "src/devagents/agents/implementation.py"
+        "src/impliforge/agents/implementation.py"
     ]
     assert code_change_slices[2]["depends_on"] == [
         "implementation-agent",
         "documentation-agent",
     ]
     assert code_change_slices[-1]["targets"] == [
-        "src/devagents/main.py",
-        "src/devagents/runtime/editor.py",
-        "src/devagents/agents/implementation.py",
+        "src/impliforge/main.py",
+        "src/impliforge/runtime/editor.py",
+        "src/impliforge/agents/implementation.py",
     ]
 
     assert implementation["deliverables"] == [
@@ -148,7 +148,7 @@ def test_implementation_agent_generates_structured_proposal() -> None:
         "docs/final-summary.md",
         "artifacts/workflows/<workflow_id>/workflow-details.json",
         "artifacts/summaries/<workflow_id>/run-summary.json",
-        "src/devagents/**/*.py allowlisted edit proposals",
+        "src/impliforge/**/*.py allowlisted edit proposals",
     ]
 
     downstream_handoff = implementation["downstream_handoff"]
@@ -203,14 +203,14 @@ def test_implementation_agent_generates_structured_proposal() -> None:
         "src-structured-implementation-update",
     ]
     assert edit_proposals[0]["mode"] == "structured_update"
-    assert edit_proposals[0]["targets"] == ["src/devagents/main.py"]
+    assert edit_proposals[0]["targets"] == ["src/impliforge/main.py"]
     assert (
         edit_proposals[0]["edits"][0]["target_symbol"]
         == "SkeletonOrchestrator._build_safe_edit_operations"
     )
-    assert edit_proposals[1]["targets"] == ["src/devagents/runtime/editor.py"]
+    assert edit_proposals[1]["targets"] == ["src/impliforge/runtime/editor.py"]
     assert edit_proposals[1]["edits"][0]["target_symbol"] == "SafeEditor.apply"
-    assert edit_proposals[2]["targets"] == ["src/devagents/agents/implementation.py"]
+    assert edit_proposals[2]["targets"] == ["src/impliforge/agents/implementation.py"]
     assert edit_proposals[2]["edits"][0]["target_symbol"] == "ImplementationAgent.run"
 
 

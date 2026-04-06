@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 from orchestration_test_helpers import DummySessionManager, DummyStateStore, build_state
 
-from devagents.models.routing import RoutingMode
-from devagents.orchestration.runtime_support import RuntimeSupport
-from devagents.runtime.editor import (
+from impliforge.models.routing import RoutingMode
+from impliforge.orchestration.runtime_support import RuntimeSupport
+from impliforge.runtime.editor import (
     ApprovalDecision,
     EditOperationKind,
     EditRequest,
@@ -35,32 +35,32 @@ def test_runtime_support_approval_hook_applies_expected_policy(
     assert docs_result.decision == ApprovalDecision.APPROVED
 
     src_write_request = EditRequest(
-        relative_path="src/devagents/main.py",
+        relative_path="src/impliforge/main.py",
         operation=EditOperationKind.WRITE,
         content="print('ok')\n",
     )
     src_write_result = runtime_support.approval_hook(
         src_write_request,
-        tmp_path / "src" / "devagents" / "main.py",
+        tmp_path / "src" / "impliforge" / "main.py",
     )
     assert src_write_result.decision == ApprovalDecision.APPROVED
     assert (
         src_write_result.reason
-        == "src/devagents allowlist permits controlled write/append edits"
+        == "src/impliforge allowlist permits controlled write/append edits"
     )
 
     src_delete_request = EditRequest(
-        relative_path="src/devagents/main.py",
+        relative_path="src/impliforge/main.py",
         operation=EditOperationKind.DELETE,
     )
     src_delete_result = runtime_support.approval_hook(
         src_delete_request,
-        tmp_path / "src" / "devagents" / "main.py",
+        tmp_path / "src" / "impliforge" / "main.py",
     )
     assert src_delete_result.decision == ApprovalDecision.DENIED
     assert (
         src_delete_result.reason
-        == "delete operations under src/devagents require explicit human approval"
+        == "delete operations under src/impliforge require explicit human approval"
     )
 
     outside_request = EditRequest(
@@ -75,7 +75,7 @@ def test_runtime_support_approval_hook_applies_expected_policy(
     assert outside_result.decision == ApprovalDecision.DENIED
     assert (
         outside_result.reason
-        == "target is outside the allowed docs/artifacts/src/devagents approval scope"
+        == "target is outside the allowed docs/artifacts/src/impliforge approval scope"
     )
 
 
@@ -101,7 +101,7 @@ def test_runtime_support_approval_hook_denies_protected_src_root(
     assert result.decision == ApprovalDecision.DENIED
     assert (
         result.reason
-        == "target is outside the allowed docs/artifacts/src/devagents approval scope"
+        == "target is outside the allowed docs/artifacts/src/impliforge approval scope"
     )
 
 
@@ -114,7 +114,7 @@ def test_runtime_support_approval_hook_denies_broad_overwrite_intent(
     )
 
     request = EditRequest(
-        relative_path="src/devagents/main.py",
+        relative_path="src/impliforge/main.py",
         operation=EditOperationKind.WRITE,
         content="print('ok')\n",
         reason="Replace large implementation block with regenerated content",
@@ -123,13 +123,13 @@ def test_runtime_support_approval_hook_denies_broad_overwrite_intent(
 
     result = runtime_support.approval_hook(
         request,
-        tmp_path / "src" / "devagents" / "main.py",
+        tmp_path / "src" / "impliforge" / "main.py",
     )
 
     assert result.decision == ApprovalDecision.DENIED
     assert (
         result.reason
-        == "dependency additions, environment changes, and security-impacting src/devagents edits require explicit human approval"
+        == "dependency additions, environment changes, and security-impacting src/impliforge edits require explicit human approval"
     )
 
 
@@ -142,7 +142,7 @@ def test_runtime_support_approval_hook_denies_dependency_addition_intent(
     )
 
     request = EditRequest(
-        relative_path="src/devagents/main.py",
+        relative_path="src/impliforge/main.py",
         operation=EditOperationKind.WRITE,
         content="print('ok')\n",
         reason="Add dependency wiring for new package install flow",
@@ -151,13 +151,13 @@ def test_runtime_support_approval_hook_denies_dependency_addition_intent(
 
     result = runtime_support.approval_hook(
         request,
-        tmp_path / "src" / "devagents" / "main.py",
+        tmp_path / "src" / "impliforge" / "main.py",
     )
 
     assert result.decision == ApprovalDecision.DENIED
     assert (
         result.reason
-        == "dependency additions, environment changes, and security-impacting src/devagents edits require explicit human approval"
+        == "dependency additions, environment changes, and security-impacting src/impliforge edits require explicit human approval"
     )
 
 
@@ -170,7 +170,7 @@ def test_runtime_support_approval_hook_denies_environment_change_intent(
     )
 
     request = EditRequest(
-        relative_path="src/devagents/main.py",
+        relative_path="src/impliforge/main.py",
         operation=EditOperationKind.APPEND,
         content="print('ok')\n",
         reason="Update environment bootstrap and venv handling",
@@ -179,13 +179,13 @@ def test_runtime_support_approval_hook_denies_environment_change_intent(
 
     result = runtime_support.approval_hook(
         request,
-        tmp_path / "src" / "devagents" / "main.py",
+        tmp_path / "src" / "impliforge" / "main.py",
     )
 
     assert result.decision == ApprovalDecision.DENIED
     assert (
         result.reason
-        == "dependency additions, environment changes, and security-impacting src/devagents edits require explicit human approval"
+        == "dependency additions, environment changes, and security-impacting src/impliforge edits require explicit human approval"
     )
 
 
@@ -198,7 +198,7 @@ def test_runtime_support_approval_hook_denies_security_impacting_intent(
     )
 
     request = EditRequest(
-        relative_path="src/devagents/main.py",
+        relative_path="src/impliforge/main.py",
         operation=EditOperationKind.WRITE,
         content="print('ok')\n",
         reason="Adjust token permission checks for auth flow",
@@ -207,13 +207,13 @@ def test_runtime_support_approval_hook_denies_security_impacting_intent(
 
     result = runtime_support.approval_hook(
         request,
-        tmp_path / "src" / "devagents" / "main.py",
+        tmp_path / "src" / "impliforge" / "main.py",
     )
 
     assert result.decision == ApprovalDecision.DENIED
     assert (
         result.reason
-        == "dependency additions, environment changes, and security-impacting src/devagents edits require explicit human approval"
+        == "dependency additions, environment changes, and security-impacting src/impliforge edits require explicit human approval"
     )
 
 

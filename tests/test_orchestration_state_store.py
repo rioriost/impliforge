@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from devagents.orchestration.state_store import StateStore
-from devagents.orchestration.workflow import SessionSnapshot, create_workflow_state
+from impliforge.orchestration.state_store import StateStore
+from impliforge.orchestration.workflow import SessionSnapshot, create_workflow_state
 
 
 def build_state():
@@ -20,7 +20,7 @@ def build_state():
     state.add_risk("workflow risk")
     state.add_open_question("workflow question")
     state.add_artifact("artifacts/design.md")
-    state.add_changed_file("src/devagents/orchestration/state_store.py")
+    state.add_changed_file("src/impliforge/orchestration/state_store.py")
     state.update_task_status(
         "requirements_analysis",
         state.require_task("requirements_analysis").status.COMPLETED,

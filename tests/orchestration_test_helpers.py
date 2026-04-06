@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from devagents.agents.base import AgentResult, AgentTask
-from devagents.orchestration.workflow import create_workflow_state
-from devagents.runtime.code_editing import CodeEditRequest
-from devagents.runtime.editor import EditRequest
+from impliforge.agents.base import AgentResult, AgentTask
+from impliforge.orchestration.workflow import create_workflow_state
+from impliforge.runtime.code_editing import CodeEditRequest
+from impliforge.runtime.editor import EditRequest
 
 
 @dataclass

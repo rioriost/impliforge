@@ -1,10 +1,10 @@
-"""Requirements analysis agent for the devagents workflow."""
+"""Requirements analysis agent for the impliforge workflow."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from devagents.agents.base import AgentResult, AgentTask, BaseAgent
+from impliforge.agents.base import AgentResult, AgentTask, BaseAgent
 
 
 class RequirementsAgent(BaseAgent):

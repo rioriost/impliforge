@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from devagents.orchestration.session_manager import (
+from impliforge.orchestration.session_manager import (
     SessionManager,
     SessionManagerConfig,
 )
-from devagents.orchestration.workflow import SessionSnapshot, create_workflow_state
+from impliforge.orchestration.workflow import SessionSnapshot, create_workflow_state
 
 
 def build_state():
@@ -19,7 +19,7 @@ def build_state():
     state.add_risk("risk-1")
     state.add_open_question("question-1")
     state.add_artifact("artifacts/design.md")
-    state.add_changed_file("src/devagents/orchestration/session_manager.py")
+    state.add_changed_file("src/impliforge/orchestration/session_manager.py")
     state.update_task_status(
         "requirements_analysis",
         state.require_task("requirements_analysis").status.COMPLETED,
@@ -143,7 +143,7 @@ def test_snapshot_context_builds_trimmed_persistent_context_and_resume_prompt() 
     state.add_risk("risk-2")
     state.add_open_question("question-2")
     state.add_artifact("artifacts/tests.md")
-    state.add_changed_file("src/devagents/orchestration/state_store.py")
+    state.add_changed_file("src/impliforge/orchestration/state_store.py")
 
     manager = SessionManager(
         SessionManagerConfig(max_context_items=2, snapshot_version="v-test")
@@ -176,8 +176,8 @@ def test_snapshot_context_builds_trimmed_persistent_context_and_resume_prompt() 
     assert context["open_questions"] == ["question-1", "question-2"]
     assert context["artifacts"] == ["artifacts/design.md", "artifacts/tests.md"]
     assert context["changed_files"] == [
-        "src/devagents/orchestration/session_manager.py",
-        "src/devagents/orchestration/state_store.py",
+        "src/impliforge/orchestration/session_manager.py",
+        "src/impliforge/orchestration/state_store.py",
     ]
     assert context["next_action"] == "Resume planning"
 
@@ -440,7 +440,7 @@ def test_rotate_session_preserves_resumable_chain_across_repeated_rotations() ->
     state.add_note("post-rotation-note")
     state.add_open_question("post-rotation-question")
     state.add_artifact("artifacts/post-rotation.md")
-    state.add_changed_file("src/devagents/main.py")
+    state.add_changed_file("src/impliforge/main.py")
 
     second_decision, second_snapshot = manager.rotate_session(
         state,
@@ -469,7 +469,7 @@ def test_rotate_session_preserves_resumable_chain_across_repeated_rotations() ->
         "artifacts/post-rotation.md" in second_snapshot.persistent_context["artifacts"]
     )
     assert (
-        "src/devagents/main.py" in second_snapshot.persistent_context["changed_files"]
+        "src/impliforge/main.py" in second_snapshot.persistent_context["changed_files"]
     )
 
     assert state.parent_session_id == first_rotated_session_id

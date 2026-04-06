@@ -5,16 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from devagents.agents.base import AgentResult
-from devagents.orchestration.artifact_writer import WorkflowArtifactWriter
-from devagents.orchestration.workflow import WorkflowState
-from devagents.runtime.code_editing import (
+from impliforge.agents.base import AgentResult
+from impliforge.orchestration.artifact_writer import WorkflowArtifactWriter
+from impliforge.orchestration.workflow import WorkflowState
+from impliforge.runtime.code_editing import (
     CodeEditKind,
     CodeEditRequest,
     CodeEditRiskFlag,
     StructuredCodeEditor,
 )
-from devagents.runtime.editor import EditOperationKind, EditRequest, SafeEditor
+from impliforge.runtime.editor import EditOperationKind, EditRequest, SafeEditor
 
 
 class EditPhaseOrchestrator:
@@ -247,7 +247,7 @@ class EditPhaseOrchestrator:
         implementation_result: AgentResult,
         fix_result: AgentResult | None,
     ) -> tuple[list[str], list[str]]:
-        """Apply structured source edits under `src/devagents/`."""
+        """Apply structured source edits under `src/impliforge/`."""
         implementation = implementation_result.outputs.get("implementation", {})
         if not isinstance(implementation, dict):
             return [], []
@@ -277,7 +277,7 @@ class EditPhaseOrchestrator:
 
         if applied_paths:
             state.add_note(
-                "structured code edit phase で src/devagents 配下の更新を適用した。"
+                "structured code edit phase で src/impliforge 配下の更新を適用した。"
             )
 
         return applied_paths, denied_paths
@@ -339,7 +339,7 @@ class EditPhaseOrchestrator:
         requests: list[CodeEditRequest] = []
         for target in targets:
             target_path = str(target).strip()
-            if not target_path.startswith("src/devagents/"):
+            if not target_path.startswith("src/impliforge/"):
                 continue
 
             for edit in edits:
@@ -427,7 +427,7 @@ class EditPhaseOrchestrator:
     ) -> str:
         """Return replacement content for known structured edit targets."""
         if (
-            target_path == "src/devagents/runtime/editor.py"
+            target_path == "src/impliforge/runtime/editor.py"
             and target_symbol == "SafeEditor.apply"
         ):
             return """
@@ -477,7 +477,7 @@ return EditResult.failure(
 """.lstrip("\n")
 
         if (
-            target_path == "src/devagents/agents/implementation.py"
+            target_path == "src/impliforge/agents/implementation.py"
             and target_symbol == "ImplementationAgent.run"
         ):
             return """
@@ -512,27 +512,27 @@ implementation = {
     ],
     "proposed_modules": [
         {
-            "path": "src/devagents/agents/implementation.py",
+            "path": "src/impliforge/agents/implementation.py",
             "purpose": "Generate implementation proposals and concrete code-change slices.",
         },
         {
-            "path": "src/devagents/agents/documentation.py",
+            "path": "src/impliforge/agents/documentation.py",
             "purpose": "Generate design and operational documentation artifacts.",
         },
         {
-            "path": "src/devagents/runtime/copilot_client.py",
+            "path": "src/impliforge/runtime/copilot_client.py",
             "purpose": "Encapsulate Copilot SDK session lifecycle and request execution.",
         },
         {
-            "path": "src/devagents/orchestration/session_manager.py",
+            "path": "src/impliforge/orchestration/session_manager.py",
             "purpose": "Manage session rotation, snapshots, and resume prompts.",
         },
         {
-            "path": "src/devagents/orchestration/state_store.py",
+            "path": "src/impliforge/orchestration/state_store.py",
             "purpose": "Persist workflow state, summaries, and session snapshots.",
         },
         {
-            "path": "src/devagents/runtime/editor.py",
+            "path": "src/impliforge/runtime/editor.py",
             "purpose": "Apply allowlisted edits safely to docs, artifacts, and approved source files.",
         },
     ],
@@ -541,7 +541,7 @@ implementation = {
             "slice_id": "implementation-agent",
             "goal": "Add an implementation agent that turns plans into executable change proposals.",
             "targets": [
-                "src/devagents/agents/implementation.py",
+                "src/impliforge/agents/implementation.py",
             ],
             "depends_on": [
                 "planning",
@@ -551,7 +551,7 @@ implementation = {
             "slice_id": "documentation-agent",
             "goal": "Add a documentation agent that produces design and runbook artifacts.",
             "targets": [
-                "src/devagents/agents/documentation.py",
+                "src/impliforge/agents/documentation.py",
             ],
             "depends_on": [
                 "planning",
@@ -561,7 +561,7 @@ implementation = {
             "slice_id": "orchestrator-integration",
             "goal": "Wire documentation and implementation phases into the orchestrator.",
             "targets": [
-                "src/devagents/main.py",
+                "src/impliforge/main.py",
             ],
             "depends_on": [
                 "implementation-agent",
@@ -582,11 +582,11 @@ implementation = {
         },
         {
             "slice_id": "src-allowlisted-edit-phase",
-            "goal": "Promote approved implementation proposals into structured source edits under src/devagents/.",
+            "goal": "Promote approved implementation proposals into structured source edits under src/impliforge/.",
             "targets": [
-                "src/devagents/main.py",
-                "src/devagents/runtime/editor.py",
-                "src/devagents/agents/implementation.py",
+                "src/impliforge/main.py",
+                "src/impliforge/runtime/editor.py",
+                "src/impliforge/agents/implementation.py",
             ],
             "depends_on": [
                 "orchestrator-integration",
@@ -599,7 +599,7 @@ implementation = {
         "docs/final-summary.md",
         "artifacts/workflows/<workflow_id>/workflow-details.json",
         "artifacts/summaries/<workflow_id>/run-summary.json",
-        "src/devagents/**/*.py allowlisted edit proposals",
+        "src/impliforge/**/*.py allowlisted edit proposals",
     ],
     "acceptance_criteria": acceptance_criteria,
     "constraints": constraints,
@@ -614,11 +614,11 @@ implementation = {
             "proposal_id": "src-structured-editor-update",
             "mode": "structured_update",
             "targets": [
-                "src/devagents/runtime/editor.py",
+                "src/impliforge/runtime/editor.py",
             ],
-            "summary": "Extend the safe editor policy to support approved src/devagents edits through structured updates.",
+            "summary": "Extend the safe editor policy to support approved src/impliforge edits through structured updates.",
             "instructions": [
-                "Restrict edits to src/devagents/ and preserve protected roots.",
+                "Restrict edits to src/impliforge/ and preserve protected roots.",
                 "Require approval for overwrite and delete operations.",
                 "Record edited files in workflow artifacts after the change.",
             ],
@@ -634,7 +634,7 @@ implementation = {
             "proposal_id": "src-structured-implementation-update",
             "mode": "structured_update",
             "targets": [
-                "src/devagents/agents/implementation.py",
+                "src/impliforge/agents/implementation.py",
             ],
             "summary": "Promote implementation proposals into structured code-edit payloads for approved source files.",
             "instructions": [
@@ -657,7 +657,7 @@ next_actions = [
     "Add documentation and implementation agents to the orchestrator",
     "Persist generated design and implementation proposal artifacts",
     "Extend the workflow into test_design, test_execution, and review phases",
-    "Promote structured src/devagents edit proposals into the safe edit phase",
+    "Promote structured src/impliforge edit proposals into the safe edit phase",
 ]
 
 risks = [

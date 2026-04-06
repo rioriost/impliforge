@@ -1,11 +1,11 @@
-"""Test design agent for the devagents workflow."""
+"""Test design agent for the impliforge workflow."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from devagents.agents.base import AgentResult, AgentTask, BaseAgent
-from devagents.orchestration.workflow import WorkflowState
+from impliforge.agents.base import AgentResult, AgentTask, BaseAgent
+from impliforge.orchestration.workflow import WorkflowState
 
 
 class TestDesignAgent(BaseAgent):
@@ -83,8 +83,8 @@ class TestDesignAgent(BaseAgent):
                 "If `working_directory` or `config_dir` is configured, each path must already exist as a directory before SDK execution",
             ],
             "validation_commands": [
-                "uv run python -m devagents requirements/sample-requirement.md --routing-mode quality",
-                "uv run python -m devagents requirements/sample-requirement.md --token-usage-ratio 0.9",
+                "uv run python -m impliforge requirements/sample-requirement.md --routing-mode quality",
+                "uv run python -m impliforge requirements/sample-requirement.md --token-usage-ratio 0.9",
             ],
             "operator_environment_signals": [
                 "Record the selected routing mode in operator-facing outputs",

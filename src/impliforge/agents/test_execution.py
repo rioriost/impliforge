@@ -1,11 +1,11 @@
-"""Test execution agent for the devagents workflow."""
+"""Test execution agent for the impliforge workflow."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from devagents.agents.base import AgentResult, AgentTask, BaseAgent
-from devagents.orchestration.workflow import WorkflowState
+from impliforge.agents.base import AgentResult, AgentTask, BaseAgent
+from impliforge.orchestration.workflow import WorkflowState
 
 
 class TestExecutionAgent(BaseAgent):

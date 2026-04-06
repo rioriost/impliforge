@@ -33,11 +33,11 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 
 ## Fix Slices
 - `fix-1`: unresolved-question handling を resolve/defer flow に揃える
-  - targets: src/devagents/agents/fixer.py, src/devagents/orchestration/artifact_writer.py, docs/fix-report.md, docs/final-summary.md, artifacts/summaries/<workflow_id>/run-summary.json
+  - targets: src/impliforge/agents/fixer.py, src/impliforge/orchestration/artifact_writer.py, docs/fix-report.md, docs/final-summary.md, artifacts/summaries/<workflow_id>/run-summary.json
   - depends_on: review, test_execution
   - validation_focus: Confirm unresolved questions are either resolved or explicitly deferred and that the status is visible in fix/final artifacts
 - `fix-2`: fix slice と revalidation の対応を明示する
-  - targets: src/devagents/agents/fixer.py, docs/fix-report.md, docs/review-report.md, docs/test-results.md
+  - targets: src/impliforge/agents/fixer.py, docs/fix-report.md, docs/review-report.md, docs/test-results.md
   - depends_on: review, test_execution
   - validation_focus: Confirm each fix slice names the follow-up review/test_execution checks used for revalidation
 
@@ -51,12 +51,12 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 
 ## Edit Proposals
 - `edit-1` [update]: unresolved-question handling を resolve/defer flow に揃える
-  - targets: src/devagents/agents/fixer.py, src/devagents/orchestration/artifact_writer.py, docs/fix-report.md, docs/final-summary.md, artifacts/summaries/<workflow_id>/run-summary.json
+  - targets: src/impliforge/agents/fixer.py, src/impliforge/orchestration/artifact_writer.py, docs/fix-report.md, docs/final-summary.md, artifacts/summaries/<workflow_id>/run-summary.json
   - instruction: Keep the change small and directly tied to unresolved-question status handling.
   - instruction: Prefer updating generated docs and implementation proposal artifacts first.
   - instruction: Confirm unresolved questions are either resolved or explicitly deferred before completion
 - `edit-2` [update]: fix slice と revalidation の対応を明示する
-  - targets: src/devagents/agents/fixer.py, docs/fix-report.md, docs/review-report.md, docs/test-results.md
+  - targets: src/impliforge/agents/fixer.py, docs/fix-report.md, docs/review-report.md, docs/test-results.md
   - instruction: Make the follow-up review/test_execution linkage explicit for each fix slice.
   - instruction: Confirm the issue no longer appears in review or test outputs
 

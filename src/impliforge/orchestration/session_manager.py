@@ -1,4 +1,4 @@
-"""Session lifecycle management for the devagents orchestration layer."""
+"""Session lifecycle management for the impliforge orchestration layer."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from devagents.orchestration.workflow import SessionSnapshot, WorkflowState
+from impliforge.orchestration.workflow import SessionSnapshot, WorkflowState
 
 
 @dataclass(slots=True)

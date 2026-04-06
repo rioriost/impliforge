@@ -40,7 +40,7 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 - test-case-12 [validation] => passed
   - Validate implementation slice `artifact-persistence`: Persist implementation and documentation outputs into docs/ and artifacts/.
 - test-case-13 [validation] => passed
-  - Validate implementation slice `src-allowlisted-edit-phase`: Promote approved implementation proposals into structured source edits under src/devagents/.
+  - Validate implementation slice `src-allowlisted-edit-phase`: Promote approved implementation proposals into structured source edits under src/impliforge/.
 - test-case-14 [validation] => passed
   - Ensure unresolved questions are surfaced before execution expands.
 

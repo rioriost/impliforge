@@ -1,7 +1,7 @@
-"""Structured code editing runtime for devagents.
+"""Structured code editing runtime for impliforge.
 
 This module provides a conservative, template-based editing layer for approved
-source files under `src/devagents/`. It is intended to replace the earlier
+source files under `src/impliforge/`. It is intended to replace the earlier
 "append a note" path with a safer mechanism that performs explicit,
 structure-aware updates.
 
@@ -32,7 +32,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Callable
 
-DEFAULT_ALLOWED_PREFIXES = ("src/devagents",)
+DEFAULT_ALLOWED_PREFIXES = ("src/impliforge",)
 DEFAULT_PROTECTED_PREFIXES = (".git", ".venv")
 DEFAULT_ALLOWED_EXTENSIONS = (".py",)
 SECRET_DETECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -505,14 +505,14 @@ def has_code_edit_risk_flag(request: CodeEditRequest, *flags: CodeEditRiskFlag) 
     return any(flag in request_flags for flag in flags)
 
 
-def approve_src_devagents_only(
+def approve_src_impliforge_only(
     request: CodeEditRequest,
     absolute_path: Path,
 ) -> CodeApprovalResult:
-    """Conservative approval hook for `src/devagents/` edits.
+    """Conservative approval hook for `src/impliforge/` edits.
 
     Rules:
-    - allow only files under `src/devagents/`
+    - allow only files under `src/impliforge/`
     - deny edits outside `.py` files
     - deny edits that appear to introduce secrets or credentials
     - deny requests that look like broad free-form rewrites
@@ -521,11 +521,11 @@ def approve_src_devagents_only(
     relative_path = request.normalized_relative_path()
 
     if not (
-        relative_path == "src/devagents" or relative_path.startswith("src/devagents/")
+        relative_path == "src/impliforge" or relative_path.startswith("src/impliforge/")
     ):
         return CodeApprovalResult(
             decision=CodeApprovalDecision.DENIED,
-            reason="target is outside src/devagents approval scope",
+            reason="target is outside src/impliforge approval scope",
         )
 
     if Path(relative_path).suffix not in DEFAULT_ALLOWED_EXTENSIONS:
@@ -581,5 +581,5 @@ def approve_src_devagents_only(
 
     return CodeApprovalResult(
         decision=CodeApprovalDecision.APPROVED,
-        reason="approved by src/devagents structured editing policy",
+        reason="approved by src/impliforge structured editing policy",
     )

@@ -12,9 +12,9 @@ from orchestration_test_helpers import (
     result,
 )
 
-from devagents.orchestration.artifact_writer import WorkflowArtifactWriter
-from devagents.orchestration.edit_phase import EditPhaseOrchestrator
-from devagents.runtime.code_editing import CodeEditKind, CodeEditRiskFlag
+from impliforge.orchestration.artifact_writer import WorkflowArtifactWriter
+from impliforge.orchestration.edit_phase import EditPhaseOrchestrator
+from impliforge.runtime.code_editing import CodeEditKind, CodeEditRiskFlag
 
 
 def test_edit_phase_builds_safe_edit_operations_for_docs_and_artifacts(
@@ -135,7 +135,7 @@ def test_edit_phase_applies_safe_and_structured_edits_and_records_paths(
             "implementation": {
                 "edit_proposals": [
                     {
-                        "targets": ["src/devagents/runtime/editor.py"],
+                        "targets": ["src/impliforge/runtime/editor.py"],
                         "instructions": ["apply structured update"],
                         "edits": [
                             {
@@ -154,7 +154,7 @@ def test_edit_phase_applies_safe_and_structured_edits_and_records_paths(
             "fix_plan": {
                 "edit_proposals": [
                     {
-                        "targets": ["src/devagents/agents/implementation.py"],
+                        "targets": ["src/impliforge/agents/implementation.py"],
                         "instructions": ["apply fix update"],
                         "edits": [
                             {
@@ -198,8 +198,8 @@ def test_edit_phase_applies_safe_and_structured_edits_and_records_paths(
     assert safe_editor.requests
     assert code_editor.requests
     assert "docs/design.md" in state.changed_files
-    assert "src/devagents/runtime/editor.py" in state.changed_files
-    assert "src/devagents/agents/implementation.py" in state.changed_files
+    assert "src/impliforge/runtime/editor.py" in state.changed_files
+    assert "src/impliforge/agents/implementation.py" in state.changed_files
     assert any("拒否" in note or "denied" in note for note in state.notes)
 
 
@@ -224,7 +224,7 @@ def test_edit_phase_ignores_non_src_targets_in_fix_proposals(
                 {
                     "targets": [
                         "docs/design.md",
-                        "src/devagents/runtime/editor.py",
+                        "src/impliforge/runtime/editor.py",
                     ],
                     "instructions": ["apply fix update"],
                     "edits": [
@@ -240,7 +240,7 @@ def test_edit_phase_ignores_non_src_targets_in_fix_proposals(
     )
 
     assert len(requests) == 1
-    assert requests[0].relative_path == "src/devagents/runtime/editor.py"
+    assert requests[0].relative_path == "src/impliforge/runtime/editor.py"
     assert requests[0].kind is CodeEditKind.REPLACE_MARKED_BLOCK
     assert requests[0].risk_flags == ()
 
@@ -263,7 +263,7 @@ def test_edit_phase_builds_structured_code_edit_requests_with_risk_flags(
         {
             "edit_proposals": [
                 {
-                    "targets": ["src/devagents/runtime/editor.py"],
+                    "targets": ["src/impliforge/runtime/editor.py"],
                     "instructions": ["apply structured update"],
                     "risk_flags": [
                         "dependency_change",
@@ -284,7 +284,7 @@ def test_edit_phase_builds_structured_code_edit_requests_with_risk_flags(
     )
 
     assert len(requests) == 1
-    assert requests[0].relative_path == "src/devagents/runtime/editor.py"
+    assert requests[0].relative_path == "src/impliforge/runtime/editor.py"
     assert requests[0].kind is CodeEditKind.REPLACE_MARKED_BLOCK
     assert requests[0].risk_flags == (
         CodeEditRiskFlag.DEPENDENCY_CHANGE,
@@ -327,7 +327,7 @@ def test_edit_phase_records_note_when_structured_code_edit_is_denied(
             "implementation": {
                 "edit_proposals": [
                     {
-                        "targets": ["src/devagents/runtime/editor.py"],
+                        "targets": ["src/impliforge/runtime/editor.py"],
                         "instructions": ["apply structured update"],
                         "edits": [
                             {
@@ -369,5 +369,5 @@ def test_edit_phase_records_note_when_structured_code_edit_is_denied(
     )
 
     assert code_editor.requests
-    assert "src/devagents/runtime/editor.py" not in state.changed_files
+    assert "src/impliforge/runtime/editor.py" not in state.changed_files
     assert any("safe edit phase" in note for note in state.notes)

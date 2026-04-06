@@ -1,4 +1,4 @@
-"""Module entrypoint for `python -m devagents`."""
+"""Module entrypoint for `python -m impliforge`."""
 
 from .main import main
 

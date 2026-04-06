@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from devagents.models.routing import (
+from impliforge.models.routing import (
     DEFAULT_MODEL,
     ModelCandidate,
     ModelRouter,

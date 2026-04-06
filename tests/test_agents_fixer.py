@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from devagents.agents.base import AgentTask
-from devagents.agents.fixer import FixerAgent
-from devagents.orchestration.workflow import WorkflowState
+from impliforge.agents.base import AgentTask
+from impliforge.agents.fixer import FixerAgent
+from impliforge.orchestration.workflow import WorkflowState
 
 
 def _build_state(requirement: str = "Stabilize the workflow") -> WorkflowState:
@@ -37,8 +37,8 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
                 "code_change_slices": [
                     {
                         "targets": [
-                            "src/devagents/agents/fixer.py",
-                            "devagents/tests/test_agents_fixer.py",
+                            "src/impliforge/agents/fixer.py",
+                            "impliforge/tests/test_agents_fixer.py",
                         ]
                     }
                 ]
@@ -115,8 +115,8 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
             "slice_id": "fix-1",
             "goal": "Review severity is still elevated",
             "targets": [
-                "src/devagents/agents/fixer.py",
-                "devagents/tests/test_agents_fixer.py",
+                "src/impliforge/agents/fixer.py",
+                "impliforge/tests/test_agents_fixer.py",
             ],
             "depends_on": ["review", "test_execution"],
             "validation_focus": "Confirm the issue no longer appears in review or test outputs, and record which re-run review/test steps verify the fix",
@@ -125,8 +125,8 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
             "slice_id": "fix-2",
             "goal": "Validation output needs another pass",
             "targets": [
-                "src/devagents/agents/fixer.py",
-                "devagents/tests/test_agents_fixer.py",
+                "src/impliforge/agents/fixer.py",
+                "impliforge/tests/test_agents_fixer.py",
             ],
             "depends_on": ["review", "test_execution"],
             "validation_focus": "Confirm the issue no longer appears in review or test outputs, and record which re-run review/test steps verify the fix",
@@ -137,8 +137,8 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
             "proposal_id": "edit-1",
             "mode": "update",
             "targets": [
-                "src/devagents/agents/fixer.py",
-                "devagents/tests/test_agents_fixer.py",
+                "src/impliforge/agents/fixer.py",
+                "impliforge/tests/test_agents_fixer.py",
             ],
             "summary": "Review severity is still elevated",
             "instructions": [
@@ -151,8 +151,8 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
             "proposal_id": "edit-2",
             "mode": "update",
             "targets": [
-                "src/devagents/agents/fixer.py",
-                "devagents/tests/test_agents_fixer.py",
+                "src/impliforge/agents/fixer.py",
+                "impliforge/tests/test_agents_fixer.py",
             ],
             "summary": "Validation output needs another pass",
             "instructions": [
@@ -222,7 +222,7 @@ def test_fixer_run_links_open_questions_to_resolved_decisions_in_reporting() -> 
                 "runbook": "# Runbook\n",
             },
             "implementation": {
-                "code_change_slices": [{"targets": ["src/devagents/agents/fixer.py"]}]
+                "code_change_slices": [{"targets": ["src/impliforge/agents/fixer.py"]}]
             },
             "test_plan": {"test_cases": ["resolved-question reporting"]},
             "test_results": {
@@ -293,7 +293,7 @@ def test_fixer_run_reports_unresolved_open_questions_without_resolution_or_defer
                 "runbook": "# Runbook\n",
             },
             "implementation": {
-                "code_change_slices": [{"targets": ["src/devagents/agents/fixer.py"]}]
+                "code_change_slices": [{"targets": ["src/impliforge/agents/fixer.py"]}]
             },
             "test_plan": {"test_cases": ["unresolved-question escalation"]},
             "test_results": {
@@ -438,8 +438,8 @@ def test_fixer_build_edit_proposals_falls_back_to_related_targets_and_docs() -> 
         documentation_bundle={"design": "# Design\n", "runbook": "# Runbook\n"},
         implementation={
             "code_change_slices": [
-                {"targets": ["src/devagents/agents/fixer.py", "docs/design.md"]},
-                {"targets": ["docs/runbook.md", "src/devagents/agents/fixer.py"]},
+                {"targets": ["src/impliforge/agents/fixer.py", "docs/design.md"]},
+                {"targets": ["docs/runbook.md", "src/impliforge/agents/fixer.py"]},
             ]
         },
     )
@@ -449,7 +449,7 @@ def test_fixer_build_edit_proposals_falls_back_to_related_targets_and_docs() -> 
             "proposal_id": "edit-fallback-1",
             "mode": "update",
             "targets": [
-                "src/devagents/agents/fixer.py",
+                "src/impliforge/agents/fixer.py",
                 "docs/design.md",
                 "docs/runbook.md",
             ],

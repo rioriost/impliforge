@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
-from devagents.agents.base import AgentTask
-from devagents.agents.requirements import RequirementsAgent
+from impliforge.agents.base import AgentTask
+from impliforge.agents.requirements import RequirementsAgent
 
 
 def test_run_returns_failure_for_blank_requirement() -> None:

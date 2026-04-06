@@ -6,16 +6,16 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-main_module = importlib.import_module("devagents.main")
-from devagents.agents.base import AgentResult, AgentTask
-from devagents.main import SkeletonOrchestrator, _run_cli, build_parser, main
-from devagents.models.routing import RoutingMode
-from devagents.orchestration.workflow import (
+main_module = importlib.import_module("impliforge.main")
+from impliforge.agents.base import AgentResult, AgentTask
+from impliforge.main import SkeletonOrchestrator, _run_cli, build_parser, main
+from impliforge.models.routing import RoutingMode
+from impliforge.orchestration.workflow import (
     TaskStatus,
     WorkflowPhase,
     create_workflow_state,
 )
-from devagents.runtime.copilot_client import (
+from impliforge.runtime.copilot_client import (
     CopilotRequest,
     CopilotResponse,
     CopilotTaskType,
@@ -864,7 +864,7 @@ def test_run_completes_full_flow_and_writes_artifacts(tmp_path: Path) -> None:
         "implementation",
         make_result(
             summary="implementation done",
-            outputs={"implementation": {"changes": ["src/devagents/main.py"]}},
+            outputs={"implementation": {"changes": ["src/impliforge/main.py"]}},
         ),
     )
     orchestrator.test_design_agent = DummyAgent(
@@ -963,7 +963,7 @@ def test_run_completes_full_flow_and_writes_artifacts(tmp_path: Path) -> None:
         "design_doc": "doc text"
     }
     assert workflow_call["implementation_result"].outputs["implementation"] == {
-        "changes": ["src/devagents/main.py"]
+        "changes": ["src/impliforge/main.py"]
     }
     assert workflow_call["test_design_result"].outputs["test_plan"] == {
         "cases": ["parser", "orchestrator"]
@@ -1011,7 +1011,7 @@ def test_run_degrades_routing_to_cost_saver_when_budget_signal_is_high(
         "implementation",
         make_result(
             summary="implementation done",
-            outputs={"implementation": {"changes": ["src/devagents/main.py"]}},
+            outputs={"implementation": {"changes": ["src/impliforge/main.py"]}},
         ),
     )
     orchestrator.test_design_agent = DummyAgent(
@@ -1096,7 +1096,7 @@ def test_run_does_not_duplicate_budget_degraded_note_when_already_cost_saver(
         "implementation",
         make_result(
             summary="implementation done",
-            outputs={"implementation": {"changes": ["src/devagents/main.py"]}},
+            outputs={"implementation": {"changes": ["src/impliforge/main.py"]}},
         ),
     )
     orchestrator.test_design_agent = DummyAgent(
@@ -1182,7 +1182,7 @@ def test_run_rotates_session_and_persists_artifacts_across_fix_loop(
         "implementation",
         make_result(
             summary="implementation done",
-            outputs={"implementation": {"changes": ["src/devagents/main.py"]}},
+            outputs={"implementation": {"changes": ["src/impliforge/main.py"]}},
         ),
     )
     orchestrator.test_design_agent = DummyAgent(
@@ -1223,7 +1223,7 @@ def test_run_rotates_session_and_persists_artifacts_across_fix_loop(
                 "fix_report": "# fix report",
                 "implementation": {
                     "changes": [
-                        "src/devagents/main.py",
+                        "src/impliforge/main.py",
                         "tests/test_main_orchestrator.py",
                     ]
                 },
@@ -1386,7 +1386,7 @@ def test_run_rotates_session_and_persists_artifacts_across_fix_loop(
     }
     assert workflow_call["implementation_result"].outputs["implementation"] == {
         "changes": [
-            "src/devagents/main.py",
+            "src/impliforge/main.py",
             "tests/test_main_orchestrator.py",
         ]
     }
@@ -1401,18 +1401,18 @@ def test_run_rotates_session_and_persists_artifacts_across_fix_loop(
     }
     assert workflow_call["implementation_result"].outputs["implementation"] == {
         "changes": [
-            "src/devagents/main.py",
+            "src/impliforge/main.py",
             "tests/test_main_orchestrator.py",
         ]
     }
     assert workflow_call["fix_result"].outputs["implementation"]["changes"] == [
-        "src/devagents/main.py",
+        "src/impliforge/main.py",
         "tests/test_main_orchestrator.py",
     ]
     assert len(orchestrator.edit_phase.calls) == 1
     assert edit_call["implementation_result"].outputs["implementation"] == {
         "changes": [
-            "src/devagents/main.py",
+            "src/impliforge/main.py",
             "tests/test_main_orchestrator.py",
         ]
     }
@@ -1457,7 +1457,7 @@ def test_run_failure_recovery_e2e_persists_recovered_outputs_after_fix_loop(
         "implementation",
         make_result(
             summary="implementation done",
-            outputs={"implementation": {"changes": ["src/devagents/main.py"]}},
+            outputs={"implementation": {"changes": ["src/impliforge/main.py"]}},
         ),
     )
     orchestrator.test_design_agent = DummyAgent(
@@ -1505,7 +1505,7 @@ def test_run_failure_recovery_e2e_persists_recovered_outputs_after_fix_loop(
                 "fix_report": "# fix report",
                 "implementation": {
                     "changes": [
-                        "src/devagents/main.py",
+                        "src/impliforge/main.py",
                         "tests/test_main_orchestrator.py",
                     ]
                 },
@@ -1619,7 +1619,7 @@ def test_run_failure_recovery_e2e_persists_recovered_outputs_after_fix_loop(
     assert state.phase is WorkflowPhase.COMPLETED
     assert workflow_call["implementation_result"].outputs["implementation"] == {
         "changes": [
-            "src/devagents/main.py",
+            "src/impliforge/main.py",
             "tests/test_main_orchestrator.py",
         ]
     }
@@ -1633,12 +1633,12 @@ def test_run_failure_recovery_e2e_persists_recovered_outputs_after_fix_loop(
         "unresolved_issues": [],
     }
     assert workflow_call["fix_result"].outputs["implementation"]["changes"] == [
-        "src/devagents/main.py",
+        "src/impliforge/main.py",
         "tests/test_main_orchestrator.py",
     ]
     assert edit_call["implementation_result"].outputs["implementation"] == {
         "changes": [
-            "src/devagents/main.py",
+            "src/impliforge/main.py",
             "tests/test_main_orchestrator.py",
         ]
     }

@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+.env
+.envrc
+
 # Local environment
 .python-version
 
@@ -17,3 +20,5 @@ artifacts/
 
 # Coverage data
 .coverage
+
+.pytest_cache/

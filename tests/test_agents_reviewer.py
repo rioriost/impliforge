@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from devagents.agents.base import AgentTask
-from devagents.agents.reviewer import ReviewAgent
-from devagents.orchestration.workflow import WorkflowState
+from impliforge.agents.base import AgentTask
+from impliforge.agents.reviewer import ReviewAgent
+from impliforge.orchestration.workflow import WorkflowState
 
 
 def _build_state(requirement: str = "Ship the reviewed workflow") -> WorkflowState:
@@ -47,7 +47,7 @@ def test_reviewer_run_success_path_without_fix_loop() -> None:
             "implementation": {
                 "strategy": "Update the implementation in small slices.",
                 "code_change_slices": [
-                    {"targets": ["src/devagents/agents/reviewer.py"]}
+                    {"targets": ["src/impliforge/agents/reviewer.py"]}
                 ],
             },
             "test_plan": {

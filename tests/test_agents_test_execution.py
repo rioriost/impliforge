@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from devagents.agents.base import AgentTask
-from devagents.agents.test_execution import TestExecutionAgent
-from devagents.orchestration.workflow import WorkflowState
+from impliforge.agents.base import AgentTask
+from impliforge.agents.test_execution import TestExecutionAgent
+from impliforge.orchestration.workflow import WorkflowState
 
 
 def _state(requirement: str = "Fallback workflow requirement") -> WorkflowState:

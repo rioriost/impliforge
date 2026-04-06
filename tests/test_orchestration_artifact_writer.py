@@ -11,9 +11,9 @@ from orchestration_test_helpers import (
     result,
 )
 
-from devagents.agents.base import AgentResult
-from devagents.orchestration.artifact_writer import WorkflowArtifactWriter
-from devagents.orchestration.workflow import TaskStatus
+from impliforge.agents.base import AgentResult
+from impliforge.orchestration.artifact_writer import WorkflowArtifactWriter
+from impliforge.orchestration.workflow import TaskStatus
 
 
 def test_workflow_artifact_writer_persists_outputs_and_finalizes(
@@ -596,7 +596,7 @@ def test_build_run_summary_payload_includes_change_impact_summary_from_slices(
                         "slice_id": "slice-a",
                         "goal": "Update design generation flow",
                         "targets": [
-                            "src/devagents/orchestration/artifact_writer.py",
+                            "src/impliforge/orchestration/artifact_writer.py",
                             "tests/test_orchestration_artifact_writer.py",
                         ],
                         "depends_on": ["implementation", "finalization"],
@@ -656,7 +656,7 @@ def test_build_run_summary_payload_includes_change_impact_summary_from_slices(
     assert payload["change_impact_summary"] == [
         {
             "changed_files": [
-                "src/devagents/orchestration/artifact_writer.py",
+                "src/impliforge/orchestration/artifact_writer.py",
                 "tests/test_orchestration_artifact_writer.py",
             ],
             "reason": "Update design generation flow",
@@ -1473,7 +1473,7 @@ def test_build_change_impact_summary_skips_invalid_slices_and_uses_fix_fallback(
                     "code_change_slices": [
                         {
                             "goal": "   ",
-                            "targets": ["src/devagents/main.py"],
+                            "targets": ["src/impliforge/main.py"],
                             "depends_on": ["implementation"],
                         },
                         {
@@ -1496,7 +1496,7 @@ def test_build_change_impact_summary_skips_invalid_slices_and_uses_fix_fallback(
                         {
                             "goal": "Stabilize artifact writer fallback",
                             "targets": [
-                                "src/devagents/orchestration/artifact_writer.py"
+                                "src/impliforge/orchestration/artifact_writer.py"
                             ],
                             "depends_on": ["review", "test_execution"],
                         }
@@ -1508,7 +1508,7 @@ def test_build_change_impact_summary_skips_invalid_slices_and_uses_fix_fallback(
 
     assert summary == [
         {
-            "changed_files": ["src/devagents/orchestration/artifact_writer.py"],
+            "changed_files": ["src/impliforge/orchestration/artifact_writer.py"],
             "reason": "Stabilize artifact writer fallback",
             "impact_scope": ["review", "test_execution"],
             "test_target": [],
@@ -1528,7 +1528,7 @@ def test_build_rollback_method_handles_empty_and_source_only_paths(
 
     assert writer._build_rollback_method([]) == "No rollback method recorded."
     assert (
-        writer._build_rollback_method(["src/devagents/main.py"])
+        writer._build_rollback_method(["src/impliforge/main.py"])
         == "Revert the affected files to the previous committed versions and re-run the targeted validation flow."
     )
 

@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from devagents.models.routing import RoutingMode
-from devagents.orchestration.state_store import StateStore
-from devagents.orchestration.workflow import WorkflowState
-from devagents.runtime.editor import (
+from impliforge.models.routing import RoutingMode
+from impliforge.orchestration.state_store import StateStore
+from impliforge.orchestration.workflow import WorkflowState
+from impliforge.runtime.editor import (
     ApprovalDecision,
     ApprovalResult,
     EditOperationKind,
@@ -114,12 +114,12 @@ class RuntimeSupport:
         if relative_path.startswith("docs/") or relative_path.startswith("artifacts/"):
             return approve_docs_and_artifacts_only(request, absolute_path)
 
-        if relative_path.startswith("src/devagents/"):
+        if relative_path.startswith("src/impliforge/"):
             if request.operation == EditOperationKind.DELETE:
                 return ApprovalResult(
                     decision=ApprovalDecision.DENIED,
                     reason=(
-                        "delete operations under src/devagents require explicit human approval"
+                        "delete operations under src/impliforge require explicit human approval"
                     ),
                 )
 
@@ -131,20 +131,20 @@ class RuntimeSupport:
                     return ApprovalResult(
                         decision=ApprovalDecision.DENIED,
                         reason=(
-                            "dependency additions, environment changes, and security-impacting src/devagents edits require explicit human approval"
+                            "dependency additions, environment changes, and security-impacting src/impliforge edits require explicit human approval"
                         ),
                     )
                 return ApprovalResult(
                     decision=ApprovalDecision.APPROVED,
                     reason=(
-                        "src/devagents allowlist permits controlled write/append edits"
+                        "src/impliforge allowlist permits controlled write/append edits"
                     ),
                 )
 
         return ApprovalResult(
             decision=ApprovalDecision.DENIED,
             reason=(
-                "target is outside the allowed docs/artifacts/src/devagents approval scope"
+                "target is outside the allowed docs/artifacts/src/impliforge approval scope"
             ),
         )
 

@@ -1,5 +1,5 @@
 [project]
-name = "devagents"
+name = "impliforge"
 version = "0.1.0"
 description = "Orchestrator-centric multi-agent workflow runner built on the GitHub Copilot SDK"
 readme = "README.md"
@@ -37,7 +37,7 @@ dev = [
 ]
 
 [project.scripts]
-devagents = "devagents:main"
+impliforge = "impliforge:main"
 
 [build-system]
 requires = ["hatchling>=1.25.0"]

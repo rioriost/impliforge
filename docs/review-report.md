@@ -13,7 +13,7 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 - [ok] fix report は review / test_execution の再検証との対応が見える形に整理されている。
 - [ok] failure-recovery E2E、session rotation stability、long-input CLI、environment assumptions などの focused coverage が追加されている。
 - [ok] 現在の全体テストは `291 passed`、coverage は total `96%`。
-- [needs_follow_up] per-source-file coverage では `src/devagents/orchestration/artifact_writer.py` が `89%` で、目標の 90% 以上に未達。
+- [needs_follow_up] per-source-file coverage では `src/impliforge/orchestration/artifact_writer.py` が `89%` で、目標の 90% 以上に未達。
 
 ## Recommendations
 - `artifact_writer.py` の未到達分岐を focused test で補い、per-file coverage を 90% 以上に引き上げる
@@ -48,10 +48,10 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 
 ## Fix Loop
 - required: yes
-- reason: coverage target for `src/devagents/orchestration/artifact_writer.py` remains below 90%
+- reason: coverage target for `src/impliforge/orchestration/artifact_writer.py` remains below 90%
 
 ## Fix Targets
-- `coverage-artifact-writer` [coverage] `src/devagents/orchestration/artifact_writer.py` の未到達分岐を focused test で補い、per-file coverage を 90% 以上にする
+- `coverage-artifact-writer` [coverage] `src/impliforge/orchestration/artifact_writer.py` の未到達分岐を focused test で補い、per-file coverage を 90% 以上にする
   - action: Add narrow tests for currently uncovered artifact-writer branches and rerun coverage
 - `docs-refresh` [documentation] current implementation / validation / completion posture を generated docs に反映する
   - action: Update docs artifacts after coverage work is complete so summaries stay aligned

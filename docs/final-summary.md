@@ -43,7 +43,7 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 ## Test Summary
 - full_test_suite: 291 passed
 - coverage_total: 96%
-- per_file_coverage_status: all reported source files at or above 90% except `src/devagents/orchestration/artifact_writer.py` at 89% before the next planned coverage slice
+- per_file_coverage_status: all reported source files at or above 90% except `src/impliforge/orchestration/artifact_writer.py` at 89% before the next planned coverage slice
 - validation_status: passed
 
 ## Review Summary
@@ -65,5 +65,5 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 
 ## Next Actions
 - Update docs to match the implemented system and current validation state.
-- Raise remaining per-file coverage gaps to at least 90%, starting with `src/devagents/orchestration/artifact_writer.py`.
+- Raise remaining per-file coverage gaps to at least 90%, starting with `src/impliforge/orchestration/artifact_writer.py`.
 - Keep future work focused on small refinement slices rather than major architecture changes.

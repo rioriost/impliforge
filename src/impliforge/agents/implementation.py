@@ -1,11 +1,11 @@
-"""Implementation proposal agent for the devagents workflow."""
+"""Implementation proposal agent for the impliforge workflow."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from devagents.agents.base import AgentResult, AgentTask, BaseAgent
-from devagents.orchestration.workflow import WorkflowState
+from impliforge.agents.base import AgentResult, AgentTask, BaseAgent
+from impliforge.orchestration.workflow import WorkflowState
 
 
 class ImplementationAgent(BaseAgent):
@@ -46,27 +46,27 @@ class ImplementationAgent(BaseAgent):
             ],
             "proposed_modules": [
                 {
-                    "path": "src/devagents/agents/implementation.py",
+                    "path": "src/impliforge/agents/implementation.py",
                     "purpose": "Generate implementation proposals and concrete code-change slices.",
                 },
                 {
-                    "path": "src/devagents/agents/documentation.py",
+                    "path": "src/impliforge/agents/documentation.py",
                     "purpose": "Generate design and operational documentation artifacts.",
                 },
                 {
-                    "path": "src/devagents/runtime/copilot_client.py",
+                    "path": "src/impliforge/runtime/copilot_client.py",
                     "purpose": "Encapsulate Copilot SDK session lifecycle and request execution.",
                 },
                 {
-                    "path": "src/devagents/orchestration/session_manager.py",
+                    "path": "src/impliforge/orchestration/session_manager.py",
                     "purpose": "Manage session rotation, snapshots, and resume prompts.",
                 },
                 {
-                    "path": "src/devagents/orchestration/state_store.py",
+                    "path": "src/impliforge/orchestration/state_store.py",
                     "purpose": "Persist workflow state, summaries, and session snapshots.",
                 },
                 {
-                    "path": "src/devagents/runtime/editor.py",
+                    "path": "src/impliforge/runtime/editor.py",
                     "purpose": "Apply allowlisted edits safely to docs, artifacts, and approved source files.",
                 },
             ],
@@ -75,7 +75,7 @@ class ImplementationAgent(BaseAgent):
                     "slice_id": "implementation-agent",
                     "goal": "Add an implementation agent that turns plans into executable change proposals.",
                     "targets": [
-                        "src/devagents/agents/implementation.py",
+                        "src/impliforge/agents/implementation.py",
                     ],
                     "depends_on": [
                         "planning",
@@ -85,7 +85,7 @@ class ImplementationAgent(BaseAgent):
                     "slice_id": "documentation-agent",
                     "goal": "Add a documentation agent that produces design and runbook artifacts.",
                     "targets": [
-                        "src/devagents/agents/documentation.py",
+                        "src/impliforge/agents/documentation.py",
                     ],
                     "depends_on": [
                         "planning",
@@ -95,7 +95,7 @@ class ImplementationAgent(BaseAgent):
                     "slice_id": "orchestrator-integration",
                     "goal": "Wire documentation and implementation phases into the orchestrator.",
                     "targets": [
-                        "src/devagents/main.py",
+                        "src/impliforge/main.py",
                     ],
                     "depends_on": [
                         "implementation-agent",
@@ -116,11 +116,11 @@ class ImplementationAgent(BaseAgent):
                 },
                 {
                     "slice_id": "src-allowlisted-edit-phase",
-                    "goal": "Promote approved implementation proposals into structured source edits under src/devagents/.",
+                    "goal": "Promote approved implementation proposals into structured source edits under src/impliforge/.",
                     "targets": [
-                        "src/devagents/main.py",
-                        "src/devagents/runtime/editor.py",
-                        "src/devagents/agents/implementation.py",
+                        "src/impliforge/main.py",
+                        "src/impliforge/runtime/editor.py",
+                        "src/impliforge/agents/implementation.py",
                     ],
                     "depends_on": [
                         "orchestrator-integration",
@@ -133,7 +133,7 @@ class ImplementationAgent(BaseAgent):
                 "docs/final-summary.md",
                 "artifacts/workflows/<workflow_id>/workflow-details.json",
                 "artifacts/summaries/<workflow_id>/run-summary.json",
-                "src/devagents/**/*.py allowlisted edit proposals",
+                "src/impliforge/**/*.py allowlisted edit proposals",
             ],
             "acceptance_criteria": acceptance_criteria,
             "constraints": constraints,
@@ -191,12 +191,12 @@ class ImplementationAgent(BaseAgent):
                     "proposal_id": "src-structured-main-update",
                     "mode": "structured_update",
                     "targets": [
-                        "src/devagents/main.py",
+                        "src/impliforge/main.py",
                     ],
                     "summary": "Wire implementation outputs into the orchestrator through a structured source edit path.",
                     "instructions": [
                         "Keep the change small and limited to orchestration flow integration.",
-                        "Do not edit files outside src/devagents/ without an explicit policy update.",
+                        "Do not edit files outside src/impliforge/ without an explicit policy update.",
                         "Re-run test_execution and review after applying the source edit.",
                     ],
                     "edits": [
@@ -211,11 +211,11 @@ class ImplementationAgent(BaseAgent):
                     "proposal_id": "src-structured-editor-update",
                     "mode": "structured_update",
                     "targets": [
-                        "src/devagents/runtime/editor.py",
+                        "src/impliforge/runtime/editor.py",
                     ],
-                    "summary": "Extend the safe editor policy to support approved src/devagents edits through structured updates.",
+                    "summary": "Extend the safe editor policy to support approved src/impliforge edits through structured updates.",
                     "instructions": [
-                        "Restrict edits to src/devagents/ and preserve protected roots.",
+                        "Restrict edits to src/impliforge/ and preserve protected roots.",
                         "Require approval for overwrite and delete operations.",
                         "Record edited files in workflow artifacts after the change.",
                     ],
@@ -231,7 +231,7 @@ class ImplementationAgent(BaseAgent):
                     "proposal_id": "src-structured-implementation-update",
                     "mode": "structured_update",
                     "targets": [
-                        "src/devagents/agents/implementation.py",
+                        "src/impliforge/agents/implementation.py",
                     ],
                     "summary": "Promote implementation proposals into structured code-edit payloads for approved source files.",
                     "instructions": [
@@ -254,7 +254,7 @@ class ImplementationAgent(BaseAgent):
             "Add documentation and implementation agents to the orchestrator",
             "Persist generated design and implementation proposal artifacts",
             "Extend the workflow into test_design, test_execution, and review phases",
-            "Promote structured src/devagents edit proposals into the safe edit phase",
+            "Promote structured src/impliforge edit proposals into the safe edit phase",
         ]
 
         risks = [

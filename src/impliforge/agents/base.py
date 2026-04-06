@@ -1,4 +1,4 @@
-"""Shared agent interfaces for the devagents workflow."""
+"""Shared agent interfaces for the impliforge workflow."""
 
 from __future__ import annotations
 

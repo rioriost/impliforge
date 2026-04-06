@@ -1,10 +1,10 @@
-class Devagents < Formula
+class Impliforge < Formula
   include Language::Python::Virtualenv
 
   desc "Orchestrator-centric multi-agent workflow runner built on the GitHub Copilot SDK"
-  homepage "https://pypi.org/project/devagents/"
-  url "https://github.com/rioriost/devagents/releases/download/0.1.0/devagents-0.1.0.tar.gz"
-  sha256 "93f9627c8b3e4d9615ceeed9208665dc70f9088b6350f73b6138b9c848ca68c5"
+  homepage "https://pypi.org/project/impliforge/"
+  url "https://github.com/rioriost/impliforge/releases/download/0.1.0/impliforge-0.1.0.tar.gz"
+  sha256 "f03f757eb5bb5fe66b52d1a5afdb713b82d6dd3bb285c53c66d247ef23ef0021"
   license "MIT"
 
   depends_on "python@3.14"
@@ -150,10 +150,10 @@ class Devagents < Formula
     end
 
     venv.pip_install buildpath
-    bin.install_symlink libexec/"bin/devagents"
+    bin.install_symlink libexec/"bin/impliforge"
   end
 
   test do
-    system "#{bin}/devagents", "--help"
+    system "#{bin}/impliforge", "--help"
   end
 end

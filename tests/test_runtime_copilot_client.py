@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from devagents.runtime.copilot_client import (
+from impliforge.runtime.copilot_client import (
     CopilotClient,
     CopilotClientConfig,
     CopilotClientError,
@@ -134,7 +134,7 @@ def test_generate_returns_dry_run_when_sdk_disabled() -> None:
         task_type=CopilotTaskType.IMPLEMENTATION,
         session_id="session-1",
         workflow_id="workflow-1",
-        persistent_context={"repo": "devagents", "branch": "main"},
+        persistent_context={"repo": "impliforge", "branch": "main"},
         metadata={"source": "test"},
     )
 
@@ -382,7 +382,7 @@ def test_build_resume_request_merges_prompts_and_sets_resume_metadata() -> None:
         task_type=CopilotTaskType.IMPLEMENTATION,
         session_id="session-2",
         workflow_id="workflow-2",
-        persistent_context={"repo": "devagents"},
+        persistent_context={"repo": "impliforge"},
         model="gpt-resume",
         metadata={"source": "resume"},
         reasoning_effort="medium",
@@ -394,7 +394,7 @@ def test_build_resume_request_merges_prompts_and_sets_resume_metadata() -> None:
     assert request.task_type == CopilotTaskType.IMPLEMENTATION
     assert request.session_id == "session-2"
     assert request.workflow_id == "workflow-2"
-    assert request.persistent_context == {"repo": "devagents"}
+    assert request.persistent_context == {"repo": "impliforge"}
     assert request.model == "gpt-resume"
     assert request.reasoning_effort == "medium"
     assert request.metadata == {"resume": True, "source": "resume"}
@@ -421,7 +421,7 @@ def test_build_session_kwargs_includes_optional_fields_when_present() -> None:
             streaming=True,
             working_directory="/tmp/work",
             config_dir="/tmp/config",
-            application_name="devagents",
+            application_name="impliforge",
             user_agent_suffix="tests",
             infinite_sessions_enabled=True,
             background_compaction_threshold=0.7,
@@ -445,7 +445,7 @@ def test_build_session_kwargs_includes_optional_fields_when_present() -> None:
     assert kwargs["streaming"] is True
     assert kwargs["working_directory"] == "/tmp/work"
     assert kwargs["config_dir"] == "/tmp/config"
-    assert kwargs["client_name"] == "devagents/tests"
+    assert kwargs["client_name"] == "impliforge/tests"
     assert kwargs["reasoning_effort"] == "high"
     assert kwargs["system_message"] == {"mode": "append", "content": "system"}
     assert kwargs["infinite_sessions"] == {
@@ -822,12 +822,12 @@ def test_demo_runs_generate_text_and_prints_content(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(
-        "devagents.runtime.copilot_client.CopilotClient", lambda: client
+        "impliforge.runtime.copilot_client.CopilotClient", lambda: client
     )
     monkeypatch.setattr(client, "generate_text", fake_generate_text)
     monkeypatch.setattr("builtins.print", lambda value: captured.append(str(value)))
 
-    from devagents.runtime import copilot_client as copilot_client_module
+    from impliforge.runtime import copilot_client as copilot_client_module
 
     run(copilot_client_module._demo())
 

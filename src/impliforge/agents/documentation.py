@@ -1,11 +1,11 @@
-"""Documentation generation agent for the devagents workflow."""
+"""Documentation generation agent for the impliforge workflow."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from devagents.agents.base import AgentResult, AgentTask, BaseAgent
-from devagents.orchestration.workflow import WorkflowState
+from impliforge.agents.base import AgentResult, AgentTask, BaseAgent
+from impliforge.orchestration.workflow import WorkflowState
 
 
 class DocumentationAgent(BaseAgent):
@@ -177,7 +177,7 @@ class DocumentationAgent(BaseAgent):
                 "",
                 "## Approval Policy",
                 "- 破壊的変更はデフォルトで自動承認しない。",
-                "- `src/devagents/` 配下の allowlisted source edit は構造化 edit proposal と approval hook を通した場合のみ許可する。",
+                "- `src/impliforge/` 配下の allowlisted source edit は構造化 edit proposal と approval hook を通した場合のみ許可する。",
                 "- delete 操作、広範囲 overwrite、依存追加、実行環境変更は human approval を必須とする。",
                 "- `docs/` と `artifacts/` への生成物保存は通常運用として許可するが、protected roots は常に対象外とする。",
             ]
@@ -258,7 +258,7 @@ class DocumentationAgent(BaseAgent):
                 "",
                 "## Approval Policy",
                 "- Allow routine generated writes under `docs/` and `artifacts/`",
-                "- Allow source edits under `src/devagents/` only when they pass the structured edit path and approval checks",
+                "- Allow source edits under `src/impliforge/` only when they pass the structured edit path and approval checks",
                 "- Require human approval for delete operations, broad overwrites, dependency additions, and execution-environment changes",
                 "- Never allow edits under protected roots",
                 "",

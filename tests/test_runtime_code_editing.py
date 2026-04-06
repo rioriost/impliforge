@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from devagents.orchestration.workflow import (
+from impliforge.orchestration.workflow import (
     TaskStatus,
     WorkflowPhase,
     WorkflowTask,
     build_default_tasks,
     create_workflow_state,
 )
-from devagents.runtime.code_editing import (
+from impliforge.runtime.code_editing import (
     CodeApprovalDecision,
     CodeApprovalResult,
     CodeEditingError,
@@ -20,7 +20,7 @@ from devagents.runtime.code_editing import (
     CodeEditRequest,
     CodeEditRiskFlag,
     StructuredCodeEditor,
-    approve_src_devagents_only,
+    approve_src_impliforge_only,
 )
 
 
@@ -47,7 +47,7 @@ def test_validate_relative_path_rejects_empty_absolute_and_traversal(
             )
         )
 
-    absolute_target = (tmp_path / "src/devagents/runtime/code_editing.py").resolve()
+    absolute_target = (tmp_path / "src/impliforge/runtime/code_editing.py").resolve()
     with pytest.raises(CodeEditingError, match="absolute paths are not allowed"):
         editor.apply(
             CodeEditRequest(
@@ -62,7 +62,7 @@ def test_validate_relative_path_rejects_empty_absolute_and_traversal(
     with pytest.raises(CodeEditingError, match="path traversal is not allowed"):
         editor.apply(
             CodeEditRequest(
-                relative_path="../src/devagents/runtime/code_editing.py",
+                relative_path="../src/impliforge/runtime/code_editing.py",
                 kind=CodeEditKind.REPLACE_SNIPPET,
                 reason="invalid",
                 old_snippet="a",
@@ -73,17 +73,17 @@ def test_validate_relative_path_rejects_empty_absolute_and_traversal(
 
 def test_policy_allowlist_and_protected_prefix_behavior() -> None:
     policy = CodeEditingPolicy(
-        allowed_prefixes=("src/devagents", ".git"),
+        allowed_prefixes=("src/impliforge", ".git"),
         protected_prefixes=(".git", ".venv"),
         allowed_extensions=(".py",),
     )
 
-    assert policy.is_allowed_path("src/devagents/runtime/code_editing.py") is True
+    assert policy.is_allowed_path("src/impliforge/runtime/code_editing.py") is True
     assert policy.is_allowed_path("docs/design.md") is False
-    assert policy.is_allowed_path("src/devagents/runtime/code_editing.md") is False
+    assert policy.is_allowed_path("src/impliforge/runtime/code_editing.md") is False
     assert policy.is_allowed_path(".git/hooks/pre-commit.py") is False
     assert policy.is_protected_path(".git/config") is True
-    assert policy.is_protected_path("src/devagents/runtime/code_editing.py") is False
+    assert policy.is_protected_path("src/impliforge/runtime/code_editing.py") is False
 
 
 def test_apply_denies_missing_file_when_creation_disabled(tmp_path: Path) -> None:
@@ -94,7 +94,7 @@ def test_apply_denies_missing_file_when_creation_disabled(tmp_path: Path) -> Non
 
     result = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/new_module.py",
+            relative_path="src/impliforge/runtime/new_module.py",
             kind=CodeEditKind.ENSURE_SNIPPET,
             reason="create denied",
             content="print('x')",
@@ -109,7 +109,7 @@ def test_apply_denies_missing_file_when_creation_disabled(tmp_path: Path) -> Non
 def test_replace_marked_block_updates_only_marked_region(tmp_path: Path) -> None:
     target = _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "before\n# BEGIN BLOCK\nold value\n# END BLOCK\nafter\n",
     )
     editor = StructuredCodeEditor(
@@ -119,7 +119,7 @@ def test_replace_marked_block_updates_only_marked_region(tmp_path: Path) -> None
 
     result = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_MARKED_BLOCK,
             reason="refresh block",
             begin_marker="# BEGIN BLOCK",
@@ -138,7 +138,7 @@ def test_replace_marked_block_updates_only_marked_region(tmp_path: Path) -> None
 def test_replace_marked_block_requires_markers_and_content(tmp_path: Path) -> None:
     _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "# BEGIN BLOCK\nold\n# END BLOCK\n",
     )
     editor = StructuredCodeEditor(
@@ -148,7 +148,7 @@ def test_replace_marked_block_requires_markers_and_content(tmp_path: Path) -> No
 
     missing_marker = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_MARKED_BLOCK,
             reason="invalid",
             end_marker="# END BLOCK",
@@ -157,7 +157,7 @@ def test_replace_marked_block_requires_markers_and_content(tmp_path: Path) -> No
     )
     missing_content = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_MARKED_BLOCK,
             reason="invalid",
             begin_marker="# BEGIN BLOCK",
@@ -174,7 +174,7 @@ def test_replace_marked_block_requires_markers_and_content(tmp_path: Path) -> No
 def test_replace_snippet_rejects_ambiguous_match(tmp_path: Path) -> None:
     _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "value = 1\nvalue = 1\n",
     )
     editor = StructuredCodeEditor(
@@ -184,7 +184,7 @@ def test_replace_snippet_rejects_ambiguous_match(tmp_path: Path) -> None:
 
     result = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="ambiguous",
             old_snippet="value = 1",
@@ -199,7 +199,7 @@ def test_replace_snippet_rejects_ambiguous_match(tmp_path: Path) -> None:
 def test_ensure_snippet_inserts_after_marker_and_is_idempotent(tmp_path: Path) -> None:
     target = _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "header\nMARKER\nfooter\n",
     )
     editor = StructuredCodeEditor(
@@ -207,7 +207,7 @@ def test_ensure_snippet_inserts_after_marker_and_is_idempotent(tmp_path: Path) -
         policy=CodeEditingPolicy(require_approval=False),
     )
     request = CodeEditRequest(
-        relative_path="src/devagents/runtime/sample.py",
+        relative_path="src/impliforge/runtime/sample.py",
         kind=CodeEditKind.ENSURE_SNIPPET,
         reason="ensure helper",
         marker="MARKER",
@@ -229,7 +229,7 @@ def test_ensure_snippet_inserts_after_marker_and_is_idempotent(tmp_path: Path) -
 def test_apply_uses_approval_hook_and_returns_denial_reason(tmp_path: Path) -> None:
     target = _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "value = 1\n",
     )
     calls: list[tuple[str, str]] = []
@@ -248,7 +248,7 @@ def test_apply_uses_approval_hook_and_returns_denial_reason(tmp_path: Path) -> N
 
     result = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="needs approval",
             old_snippet="value = 1",
@@ -256,7 +256,7 @@ def test_apply_uses_approval_hook_and_returns_denial_reason(tmp_path: Path) -> N
         )
     )
 
-    assert calls == [("src/devagents/runtime/sample.py", target.as_posix())]
+    assert calls == [("src/impliforge/runtime/sample.py", target.as_posix())]
     assert result.ok is False
     assert result.changed is False
     assert "manual review required" in result.message
@@ -266,14 +266,14 @@ def test_apply_uses_approval_hook_and_returns_denial_reason(tmp_path: Path) -> N
 def test_apply_requires_approval_hook_when_policy_demands_it(tmp_path: Path) -> None:
     _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "value = 1\n",
     )
     editor = StructuredCodeEditor(tmp_path)
 
     result = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="missing hook",
             old_snippet="value = 1",
@@ -288,7 +288,7 @@ def test_apply_requires_approval_hook_when_policy_demands_it(tmp_path: Path) -> 
 def test_preview_and_dry_run_report_change_without_writing(tmp_path: Path) -> None:
     target = _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "value = 1\n",
     )
     editor = StructuredCodeEditor(
@@ -298,7 +298,7 @@ def test_preview_and_dry_run_report_change_without_writing(tmp_path: Path) -> No
 
     preview = editor.preview(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="preview",
             old_snippet="value = 1",
@@ -313,7 +313,7 @@ def test_preview_and_dry_run_report_change_without_writing(tmp_path: Path) -> No
     )
     dry_run = dry_run_editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="dry-run",
             old_snippet="value = 1",
@@ -330,18 +330,18 @@ def test_preview_and_dry_run_report_change_without_writing(tmp_path: Path) -> No
     assert target.read_text(encoding="utf-8") == "value = 1\n"
 
 
-def test_approve_src_devagents_only_allows_python_and_denies_outside_scope() -> None:
-    approved = approve_src_devagents_only(
+def test_approve_src_impliforge_only_allows_python_and_denies_outside_scope() -> None:
+    approved = approve_src_impliforge_only(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_AFTER_MARKER,
             reason="ok",
             marker="x",
             content="y",
         ),
-        Path("/tmp/src/devagents/runtime/sample.py"),
+        Path("/tmp/src/impliforge/runtime/sample.py"),
     )
-    denied = approve_src_devagents_only(
+    denied = approve_src_impliforge_only(
         CodeEditRequest(
             relative_path="docs/design.md",
             kind=CodeEditKind.INSERT_AFTER_MARKER,
@@ -354,20 +354,20 @@ def test_approve_src_devagents_only_allows_python_and_denies_outside_scope() -> 
 
     assert approved.decision is CodeApprovalDecision.APPROVED
     assert denied.decision is CodeApprovalDecision.DENIED
-    assert "outside src/devagents approval scope" in denied.reason
+    assert "outside src/impliforge approval scope" in denied.reason
 
 
-def test_approve_src_devagents_only_denies_broad_marked_block_rewrite() -> None:
-    denied = approve_src_devagents_only(
+def test_approve_src_impliforge_only_denies_broad_marked_block_rewrite() -> None:
+    denied = approve_src_impliforge_only(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_MARKED_BLOCK,
             reason="large rewrite",
             begin_marker="# BEGIN STRUCTURED EDIT: sample",
             end_marker="# END STRUCTURED EDIT: sample",
             content=("line\n" * 121),
         ),
-        Path("/tmp/src/devagents/runtime/sample.py"),
+        Path("/tmp/src/impliforge/runtime/sample.py"),
     )
 
     assert denied.decision is CodeApprovalDecision.DENIED
@@ -376,33 +376,33 @@ def test_approve_src_devagents_only_denies_broad_marked_block_rewrite() -> None:
     )
 
 
-def test_approve_src_devagents_only_allows_small_marked_block_rewrite() -> None:
-    approved = approve_src_devagents_only(
+def test_approve_src_impliforge_only_allows_small_marked_block_rewrite() -> None:
+    approved = approve_src_impliforge_only(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_MARKED_BLOCK,
             reason="small rewrite",
             begin_marker="# BEGIN STRUCTURED EDIT: sample",
             end_marker="# END STRUCTURED EDIT: sample",
             content="print('ok')\n",
         ),
-        Path("/tmp/src/devagents/runtime/sample.py"),
+        Path("/tmp/src/impliforge/runtime/sample.py"),
     )
 
     assert approved.decision is CodeApprovalDecision.APPROVED
-    assert approved.reason == "approved by src/devagents structured editing policy"
+    assert approved.reason == "approved by src/impliforge structured editing policy"
 
 
-def test_approve_src_devagents_only_denies_secret_like_content() -> None:
-    denied = approve_src_devagents_only(
+def test_approve_src_impliforge_only_denies_secret_like_content() -> None:
+    denied = approve_src_impliforge_only(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_AFTER_MARKER,
             reason="introduce token",
             marker="def sample() -> None:\n",
             content='    api_key = "super-secret-value"\n',
         ),
-        Path("/tmp/src/devagents/runtime/sample.py"),
+        Path("/tmp/src/impliforge/runtime/sample.py"),
     )
 
     assert denied.decision is CodeApprovalDecision.DENIED
@@ -412,34 +412,34 @@ def test_approve_src_devagents_only_denies_secret_like_content() -> None:
     )
 
 
-def test_approve_src_devagents_only_denies_structured_dependency_risk_flag() -> None:
-    denied = approve_src_devagents_only(
+def test_approve_src_impliforge_only_denies_structured_dependency_risk_flag() -> None:
+    denied = approve_src_impliforge_only(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_AFTER_MARKER,
             reason="small update",
             risk_flags=(CodeEditRiskFlag.DEPENDENCY_CHANGE,),
             marker="def sample() -> None:\n",
             content="    return None\n",
         ),
-        Path("/tmp/src/devagents/runtime/sample.py"),
+        Path("/tmp/src/impliforge/runtime/sample.py"),
     )
 
     assert denied.decision is CodeApprovalDecision.DENIED
     assert denied.reason == "structured risk flags require explicit human approval"
 
 
-def test_approve_src_devagents_only_denies_structured_security_risk_flag() -> None:
-    denied = approve_src_devagents_only(
+def test_approve_src_impliforge_only_denies_structured_security_risk_flag() -> None:
+    denied = approve_src_impliforge_only(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_AFTER_MARKER,
             reason="small update",
             risk_flags=(CodeEditRiskFlag.SECURITY_IMPACT,),
             marker="def sample() -> None:\n",
             content="    return None\n",
         ),
-        Path("/tmp/src/devagents/runtime/sample.py"),
+        Path("/tmp/src/impliforge/runtime/sample.py"),
     )
 
     assert denied.decision is CodeApprovalDecision.DENIED
@@ -451,7 +451,7 @@ def test_insert_after_and_before_marker_require_inputs_and_marker_presence(
 ) -> None:
     _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "alpha\nMARKER\nomega\n",
     )
     editor = StructuredCodeEditor(
@@ -461,7 +461,7 @@ def test_insert_after_and_before_marker_require_inputs_and_marker_presence(
 
     missing_after_marker = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_AFTER_MARKER,
             reason="invalid",
             content="x",
@@ -469,7 +469,7 @@ def test_insert_after_and_before_marker_require_inputs_and_marker_presence(
     )
     missing_after_content = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_AFTER_MARKER,
             reason="invalid",
             marker="MARKER",
@@ -477,7 +477,7 @@ def test_insert_after_and_before_marker_require_inputs_and_marker_presence(
     )
     missing_before_marker = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_BEFORE_MARKER,
             reason="invalid",
             content="x",
@@ -485,7 +485,7 @@ def test_insert_after_and_before_marker_require_inputs_and_marker_presence(
     )
     missing_before_content = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_BEFORE_MARKER,
             reason="invalid",
             marker="MARKER",
@@ -493,7 +493,7 @@ def test_insert_after_and_before_marker_require_inputs_and_marker_presence(
     )
     marker_not_found = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_BEFORE_MARKER,
             reason="invalid",
             marker="MISSING",
@@ -511,7 +511,7 @@ def test_insert_after_and_before_marker_require_inputs_and_marker_presence(
 def test_insert_before_marker_and_replace_snippet_success_paths(tmp_path: Path) -> None:
     target = _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "alpha\nMARKER\nvalue = 1\n",
     )
     editor = StructuredCodeEditor(
@@ -521,7 +521,7 @@ def test_insert_before_marker_and_replace_snippet_success_paths(tmp_path: Path) 
 
     inserted = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.INSERT_BEFORE_MARKER,
             reason="insert before",
             marker="MARKER",
@@ -530,7 +530,7 @@ def test_insert_before_marker_and_replace_snippet_success_paths(tmp_path: Path) 
     )
     replaced = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="replace",
             old_snippet="value = 1",
@@ -550,7 +550,7 @@ def test_replace_snippet_requires_both_snippets_and_existing_match(
 ) -> None:
     _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "value = 1\n",
     )
     editor = StructuredCodeEditor(
@@ -560,7 +560,7 @@ def test_replace_snippet_requires_both_snippets_and_existing_match(
 
     missing_new = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="invalid",
             old_snippet="value = 1",
@@ -568,7 +568,7 @@ def test_replace_snippet_requires_both_snippets_and_existing_match(
     )
     missing_old = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="invalid",
             new_snippet="value = 2",
@@ -576,7 +576,7 @@ def test_replace_snippet_requires_both_snippets_and_existing_match(
     )
     not_found = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="invalid",
             old_snippet="missing",
@@ -594,7 +594,7 @@ def test_ensure_snippet_requires_content_and_missing_marker_fails(
 ) -> None:
     _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "header\nbody\n",
     )
     editor = StructuredCodeEditor(
@@ -604,14 +604,14 @@ def test_ensure_snippet_requires_content_and_missing_marker_fails(
 
     missing_content = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.ENSURE_SNIPPET,
             reason="invalid",
         )
     )
     missing_marker = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.ENSURE_SNIPPET,
             reason="invalid",
             marker="MISSING",
@@ -628,7 +628,7 @@ def test_ensure_snippet_appends_without_extra_newline_when_disabled(
 ) -> None:
     target = _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "value = 1",
     )
     editor = StructuredCodeEditor(
@@ -638,7 +638,7 @@ def test_ensure_snippet_appends_without_extra_newline_when_disabled(
 
     result = editor.apply(
         CodeEditRequest(
-            relative_path="src/devagents/runtime/sample.py",
+            relative_path="src/impliforge/runtime/sample.py",
             kind=CodeEditKind.ENSURE_SNIPPET,
             reason="append",
             content="value = 2",
@@ -654,7 +654,7 @@ def test_ensure_snippet_appends_without_extra_newline_when_disabled(
 def test_apply_many_returns_results_in_order(tmp_path: Path) -> None:
     target = _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "first = 1\nsecond = 2\n",
     )
     editor = StructuredCodeEditor(
@@ -665,14 +665,14 @@ def test_apply_many_returns_results_in_order(tmp_path: Path) -> None:
     results = editor.apply_many(
         [
             CodeEditRequest(
-                relative_path="src/devagents/runtime/sample.py",
+                relative_path="src/impliforge/runtime/sample.py",
                 kind=CodeEditKind.REPLACE_SNIPPET,
                 reason="first",
                 old_snippet="first = 1",
                 new_snippet="first = 10",
             ),
             CodeEditRequest(
-                relative_path="src/devagents/runtime/sample.py",
+                relative_path="src/impliforge/runtime/sample.py",
                 kind=CodeEditKind.REPLACE_SNIPPET,
                 reason="second",
                 old_snippet="second = 2",
@@ -690,7 +690,7 @@ def test_validate_relative_path_normalizes_dot_prefix_and_backslashes(
 ) -> None:
     target = _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "value = 1\n",
     )
     editor = StructuredCodeEditor(
@@ -700,7 +700,7 @@ def test_validate_relative_path_normalizes_dot_prefix_and_backslashes(
 
     result = editor.apply(
         CodeEditRequest(
-            relative_path=r".\src\devagents\runtime\sample.py",
+            relative_path=r".\src\impliforge\runtime\sample.py",
             kind=CodeEditKind.REPLACE_SNIPPET,
             reason="normalize",
             old_snippet="value = 1",
@@ -709,14 +709,14 @@ def test_validate_relative_path_normalizes_dot_prefix_and_backslashes(
     )
 
     assert result.ok is True
-    assert result.relative_path == "src/devagents/runtime/sample.py"
+    assert result.relative_path == "src/impliforge/runtime/sample.py"
     assert target.read_text(encoding="utf-8") == "value = 2\n"
 
 
 def test_absolute_paths_still_require_allowed_prefix_match(tmp_path: Path) -> None:
     target = _write_source(
         tmp_path,
-        "src/devagents/runtime/sample.py",
+        "src/impliforge/runtime/sample.py",
         "value = 1\n",
     )
     editor = StructuredCodeEditor(

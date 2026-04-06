@@ -4,7 +4,7 @@ REPO_ROOT := $(CURDIR)
 UV ?= uv
 DIST_DIR := $(REPO_ROOT)/dist
 FORMULA_DIR := $(REPO_ROOT)/Formula
-FORMULA_FILE := $(FORMULA_DIR)/devagents.rb
+FORMULA_FILE := $(FORMULA_DIR)/impliforge.rb
 
 .PHONY: release-artifacts sync build formula
 

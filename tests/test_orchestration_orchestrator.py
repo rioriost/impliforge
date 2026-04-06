@@ -5,9 +5,9 @@ from pathlib import Path
 
 from orchestration_test_helpers import DummyAgent
 
-from devagents.agents.base import AgentResult, AgentTask
-from devagents.orchestration.orchestrator import Orchestrator
-from devagents.orchestration.workflow import (
+from impliforge.agents.base import AgentResult, AgentTask
+from impliforge.orchestration.orchestrator import Orchestrator
+from impliforge.orchestration.workflow import (
     TaskStatus,
     WorkflowPhase,
     create_workflow_state,
@@ -440,7 +440,7 @@ def test_orchestrator_runs_all_configured_agents_and_collects_outputs(
         "implementer",
         AgentResult.success(
             "implementation complete",
-            outputs={"changed_files": ["src/devagents/orchestration/orchestrator.py"]},
+            outputs={"changed_files": ["src/impliforge/orchestration/orchestrator.py"]},
             artifacts=["artifacts/implementation.patch"],
             risks=["implementation-risk"],
         ),
@@ -511,7 +511,7 @@ def test_orchestrator_runs_all_configured_agents_and_collects_outputs(
 
     assert state.open_questions == ["Which API version?", "Need follow-up cleanup?"]
     assert state.changed_files == [
-        "src/devagents/orchestration/orchestrator.py",
+        "src/impliforge/orchestration/orchestrator.py",
         "tests/test_orchestration_orchestrator.py",
     ]
     assert state.artifacts == [
