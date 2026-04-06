@@ -464,6 +464,28 @@ def test_build_run_summary_payload_and_result_to_dict_handle_optional_fix_result
     ]
     assert payload["results"]["requirements_result"]["status"] == "completed"
     assert payload["results"]["fix_result"] is None
+    assert payload["acceptance_gate"]["ready_for_completion"] is False
+    assert payload["acceptance_gate"]["failed_checks"] == [
+        "acceptance_criteria_defined",
+        "documentation_updated",
+    ]
+    assert payload["completion_evidence"] == {
+        "mvp_artifacts_persisted": True,
+        "acceptance_ready": False,
+        "acceptance_criteria_count": 0,
+        "completed_task_count": 7,
+        "completed_tasks": [
+            "requirements_analysis",
+            "planning",
+            "documentation",
+            "implementation",
+            "test_design",
+            "test_execution",
+            "review",
+        ],
+        "docs_artifacts": ["docs/design.md"],
+        "artifact_count": 1,
+    }
     assert writer.result_to_dict(None) is None
 
     noisy_result = AgentResult.success(
@@ -1126,6 +1148,15 @@ def test_build_final_summary_renders_acceptance_gate_when_present(
     assert "- open_questions: Who approves rollout?" in summary
     assert "- resolved_decisions: Persist workflow state" in summary
     assert "- unresolved_open_questions: Who approves rollout?" in summary
+    assert "## Completion Evidence" in summary
+    assert "- mvp_artifacts_persisted: False" in summary
+    assert "- completed_task_count: 7" in summary
+    assert (
+        "- completed_tasks: requirements_analysis, planning, documentation, implementation, test_design, test_execution, review"
+        in summary
+    )
+    assert "- artifact_count: 0" in summary
+    assert "- docs_artifacts: none" in summary
     assert "- Re-run validation" in summary
     assert "- Update docs" in summary
 
@@ -1181,6 +1212,85 @@ def test_build_acceptance_gate_blocks_when_open_questions_remain_unresolved(
     assert acceptance_gate["open_questions"] == ["Who approves rollout?"]
     assert acceptance_gate["resolved_decisions"] == []
     assert acceptance_gate["unresolved_open_questions"] == ["Who approves rollout?"]
+
+
+def test_build_acceptance_gate_allows_explicitly_deferred_open_questions(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.add_open_question("Who approves rollout?")
+
+    acceptance_gate = writer.build_acceptance_gate(
+        state=state,
+        requirements_result=result(
+            outputs={
+                "normalized_requirements": {
+                    "objective": "x",
+                    "acceptance_criteria": ["Tests pass"],
+                    "open_questions": ["Who approves rollout?"],
+                    "resolved_decisions": [],
+                    "deferred_open_questions": ["Who approves rollout?"],
+                }
+            }
+        ),
+        documentation_result=result(
+            outputs={
+                "documentation_bundle": {"design": "present"},
+                "open_questions": ["Who approves rollout?"],
+                "resolved_decisions": [],
+                "deferred_open_questions": ["Who approves rollout?"],
+            }
+        ),
+        test_execution_result=result(
+            outputs={"test_results": {"status": "passed", "executed_checks": []}}
+        ),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "low",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                },
+                "open_questions": ["Who approves rollout?"],
+                "resolved_decisions": [],
+                "deferred_open_questions": ["Who approves rollout?"],
+            }
+        ),
+    )
+
+    assert acceptance_gate["ready_for_completion"] is True
+    assert acceptance_gate["failed_checks"] == []
+    assert acceptance_gate["open_questions"] == ["Who approves rollout?"]
+    assert acceptance_gate["resolved_decisions"] == []
+    assert acceptance_gate["deferred_open_questions"] == ["Who approves rollout?"]
+    assert acceptance_gate["unresolved_open_questions"] == []
+
+
+def test_build_finalization_next_actions_includes_open_question_defer_guidance(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+
+    actions = writer._build_finalization_next_actions(
+        {
+            "ready_for_completion": False,
+            "failed_checks": ["open_questions_resolved_or_deferred"],
+            "unresolved_issues": [],
+        }
+    )
+
+    assert actions == [
+        "Resolve or explicitly defer every remaining open question before declaring completion"
+    ]
 
 
 def test_build_final_summary_uses_defaults_for_non_list_values_and_missing_actions(

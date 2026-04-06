@@ -243,6 +243,9 @@ class DocumentationAgent(BaseAgent):
                 "- Confirm persistent context is stored in `artifacts/workflow-state.json`, `artifacts/sessions/<session_id>/session-snapshot.json`, and `artifacts/summaries/<workflow_id>/run-summary.json`",
                 "- Confirm resume can recover `requirement`, `phase`, `workflow_id`, `session_id`, completed tasks, pending tasks, latest summary, and resume prompt",
                 "- Confirm destructive changes, dependency additions, and environment changes are not auto-approved",
+                "- Confirm blocked work is reflected in operator-facing outputs with explicit next actions and escalation triggers",
+                "- Confirm run summary surfaces budget pressure signals before cost ceilings are exceeded",
+                "- Confirm artifact lists stay deduplicated and limited to operator-meaningful outputs",
                 "",
                 "## Persistence Policy",
                 "- Persist workflow-level state in `artifacts/workflow-state.json`",
@@ -250,12 +253,20 @@ class DocumentationAgent(BaseAgent):
                 "- Persist operator-facing execution summary in `artifacts/summaries/<workflow_id>/run-summary.json`",
                 "- Guarantee structured recovery data only; transient model reasoning and raw token streams are out of scope",
                 "- If persisted state is incomplete, resume from the latest consistent checkpoint instead of guessing missing context",
+                "- Surface token usage ratio in the run summary so operators can react before budget ceilings are exceeded",
+                "- Keep artifact references deduplicated so repeated generated paths do not inflate operator-facing artifact volume",
                 "",
                 "## Approval Policy",
                 "- Allow routine generated writes under `docs/` and `artifacts/`",
                 "- Allow source edits under `src/devagents/` only when they pass the structured edit path and approval checks",
                 "- Require human approval for delete operations, broad overwrites, dependency additions, and execution-environment changes",
                 "- Never allow edits under protected roots",
+                "",
+                "## Blocked-State Handling",
+                "- Mark the workflow as blocked when unresolved questions, repository-policy conflicts, or missing restore data prevent safe progress",
+                "- Record the blocking reason in operator-facing outputs before requesting human intervention",
+                "- Preserve the latest consistent checkpoint and resume prompt so the next operator can continue without reconstructing context",
+                "- List the immediate next action, the human decision needed, and the condition for resuming execution",
                 "",
                 "## Escalation Conditions",
             ]
@@ -267,6 +278,11 @@ class DocumentationAgent(BaseAgent):
                     "- Open questions remain unresolved before implementation starts",
                     "- Design assumptions conflict with repository constraints",
                     "- Session restore data is incomplete or inconsistent",
+                    "",
+                    "## Operator Escalation Actions",
+                    "- Pause implementation until the open questions are answered or explicitly deferred",
+                    "- Ask the operator to record the decision owner and the expected follow-up action in the run summary",
+                    "- Resume only after blocked-state outputs include the chosen next action and restart condition",
                 ]
             )
         else:
@@ -275,6 +291,11 @@ class DocumentationAgent(BaseAgent):
                     "- Generated implementation plan conflicts with repository constraints",
                     "- Session restore data is incomplete or inconsistent",
                     "- A requested change requires destructive modification or dependency addition without explicit approval",
+                    "",
+                    "## Operator Escalation Actions",
+                    "- Stop before applying the blocked change and request explicit human approval or a narrower alternative",
+                    "- Ask the operator to capture the blocking constraint, required decision, and approved next action in the run summary",
+                    "- Resume only after the blocked-state record identifies the approval or repository decision that unblocks execution",
                 ]
             )
 

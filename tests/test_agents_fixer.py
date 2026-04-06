@@ -118,7 +118,7 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
                 "devagents/tests/test_agents_fixer.py",
             ],
             "depends_on": ["review", "test_execution"],
-            "validation_focus": "Confirm the issue no longer appears in review or test outputs",
+            "validation_focus": "Confirm the issue no longer appears in review or test outputs, and record which re-run review/test steps verify the fix",
         },
         {
             "slice_id": "fix-2",
@@ -128,7 +128,7 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
                 "devagents/tests/test_agents_fixer.py",
             ],
             "depends_on": ["review", "test_execution"],
-            "validation_focus": "Confirm the issue no longer appears in review or test outputs",
+            "validation_focus": "Confirm the issue no longer appears in review or test outputs, and record which re-run review/test steps verify the fix",
         },
     ]
     assert fix_plan["edit_proposals"] == [
@@ -143,7 +143,7 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
             "instructions": [
                 "Keep the change small and directly tied to the unresolved issue.",
                 "Prefer updating generated docs and implementation proposal artifacts first.",
-                "Confirm the issue no longer appears in review or test outputs",
+                "Confirm the issue no longer appears in review or test outputs, and record which re-run review/test steps verify the fix",
             ],
         },
         {
@@ -157,15 +157,15 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
             "instructions": [
                 "Keep the change small and directly tied to the unresolved issue.",
                 "Prefer updating generated docs and implementation proposal artifacts first.",
-                "Confirm the issue no longer appears in review or test outputs",
+                "Confirm the issue no longer appears in review or test outputs, and record which re-run review/test steps verify the fix",
             ],
         },
     ]
     assert fix_plan["revalidation_plan"] == [
-        "Re-run test_execution after applying the proposed fix slice",
-        "Re-run review and compare severity and unresolved issues",
-        "Confirm previously passed checks remain stable after the fix",
-        "Verify each unresolved issue is either resolved or explicitly deferred",
+        "Re-run test_execution after applying the proposed fix slice and record which failing or targeted checks were revalidated",
+        "Re-run review and compare severity and unresolved issues against the pre-fix report",
+        "Confirm previously passed checks remain stable after the fix and note that follow-up status in the fix report",
+        "Verify each unresolved issue is either resolved or explicitly deferred, with the matching review/test follow-up called out",
         "Confirm requirement ambiguity is documented separately from implementation defects",
     ]
 
@@ -248,7 +248,7 @@ def test_fixer_run_without_fix_loop_uses_recommendation_and_completion_paths() -
             "goal": "Tighten generated artifacts",
             "targets": [],
             "depends_on": ["review"],
-            "validation_focus": "Confirm the recommendation is reflected in regenerated artifacts",
+            "validation_focus": "Confirm the recommendation is reflected in regenerated artifacts and visible in the follow-up review output",
         }
     ]
     assert fix_plan["edit_proposals"] == [
@@ -260,13 +260,13 @@ def test_fixer_run_without_fix_loop_uses_recommendation_and_completion_paths() -
             "instructions": [
                 "Keep the change small and directly tied to the unresolved issue.",
                 "Prefer updating generated docs and implementation proposal artifacts first.",
-                "Confirm the recommendation is reflected in regenerated artifacts",
+                "Confirm the recommendation is reflected in regenerated artifacts and visible in the follow-up review output",
             ],
         }
     ]
     assert fix_plan["revalidation_plan"] == [
-        "Re-run test_execution after applying the proposed fix slice",
-        "Re-run review and compare severity and unresolved issues",
+        "Re-run test_execution after applying the proposed fix slice and record which failing or targeted checks were revalidated",
+        "Re-run review and compare severity and unresolved issues against the pre-fix report",
     ]
     assert fix_plan["documentation_inputs"] == {
         "design_present": False,
@@ -344,7 +344,7 @@ def test_fixer_helpers_cover_fallback_and_rendering_branches() -> None:
             "goal": "Review outputs and tighten implementation proposal where needed",
             "targets": [],
             "depends_on": ["review"],
-            "validation_focus": "Re-run review and confirm no unresolved issues remain",
+            "validation_focus": "Re-run review and confirm no unresolved issues remain, with the follow-up review step called out explicitly",
         }
     ]
 

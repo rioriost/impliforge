@@ -192,7 +192,7 @@ class FixerAgent(BaseAgent):
                     "goal": issue,
                     "targets": related_targets,
                     "depends_on": ["review", "test_execution"],
-                    "validation_focus": "Confirm the issue no longer appears in review or test outputs",
+                    "validation_focus": "Confirm the issue no longer appears in review or test outputs, and record which re-run review/test steps verify the fix",
                 }
             )
 
@@ -204,7 +204,7 @@ class FixerAgent(BaseAgent):
                         "goal": recommendation,
                         "targets": self._collect_related_targets(code_change_slices),
                         "depends_on": ["review"],
-                        "validation_focus": "Confirm the recommendation is reflected in regenerated artifacts",
+                        "validation_focus": "Confirm the recommendation is reflected in regenerated artifacts and visible in the follow-up review output",
                     }
                 )
 
@@ -215,7 +215,7 @@ class FixerAgent(BaseAgent):
                     "goal": "Review outputs and tighten implementation proposal where needed",
                     "targets": self._collect_related_targets(code_change_slices),
                     "depends_on": ["review"],
-                    "validation_focus": "Re-run review and confirm no unresolved issues remain",
+                    "validation_focus": "Re-run review and confirm no unresolved issues remain, with the follow-up review step called out explicitly",
                 }
             )
 
@@ -229,16 +229,18 @@ class FixerAgent(BaseAgent):
         open_questions: list[str],
     ) -> list[str]:
         steps = [
-            "Re-run test_execution after applying the proposed fix slice",
-            "Re-run review and compare severity and unresolved issues",
+            "Re-run test_execution after applying the proposed fix slice and record which failing or targeted checks were revalidated",
+            "Re-run review and compare severity and unresolved issues against the pre-fix report",
         ]
 
         if executed_checks:
-            steps.append("Confirm previously passed checks remain stable after the fix")
+            steps.append(
+                "Confirm previously passed checks remain stable after the fix and note that follow-up status in the fix report"
+            )
 
         if unresolved_issues:
             steps.append(
-                "Verify each unresolved issue is either resolved or explicitly deferred"
+                "Verify each unresolved issue is either resolved or explicitly deferred, with the matching review/test follow-up called out"
             )
 
         if open_questions:

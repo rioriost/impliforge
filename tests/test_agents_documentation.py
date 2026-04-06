@@ -117,8 +117,37 @@ def test_documentation_agent_generates_design_and_runbook_outputs() -> None:
     assert "1. Analyze" in runbook
     assert "2. Document" in runbook
     assert "## Operator Checklist" in runbook
+    assert (
+        "- Confirm blocked work is reflected in operator-facing outputs with explicit next actions and escalation triggers"
+        in runbook
+    )
+    assert (
+        "- Confirm run summary surfaces budget pressure signals before cost ceilings are exceeded"
+        in runbook
+    )
+    assert (
+        "- Confirm artifact lists stay deduplicated and limited to operator-meaningful outputs"
+        in runbook
+    )
     assert "## Persistence Policy" in runbook
+    assert (
+        "- Surface token usage ratio in the run summary so operators can react before budget ceilings are exceeded"
+        in runbook
+    )
+    assert (
+        "- Keep artifact references deduplicated so repeated generated paths do not inflate operator-facing artifact volume"
+        in runbook
+    )
     assert "## Approval Policy" in runbook
+    assert "## Blocked-State Handling" in runbook
+    assert (
+        "- Mark the workflow as blocked when unresolved questions, repository-policy conflicts, or missing restore data prevent safe progress"
+        in runbook
+    )
+    assert (
+        "- List the immediate next action, the human decision needed, and the condition for resuming execution"
+        in runbook
+    )
     assert "## Escalation Conditions" in runbook
     assert (
         "- Generated implementation plan conflicts with repository constraints"
@@ -126,6 +155,19 @@ def test_documentation_agent_generates_design_and_runbook_outputs() -> None:
     )
     assert (
         "- A requested change requires destructive modification or dependency addition without explicit approval"
+        in runbook
+    )
+    assert "## Operator Escalation Actions" in runbook
+    assert (
+        "- Stop before applying the blocked change and request explicit human approval or a narrower alternative"
+        in runbook
+    )
+    assert (
+        "- Ask the operator to capture the blocking constraint, required decision, and approved next action in the run summary"
+        in runbook
+    )
+    assert (
+        "- Resume only after the blocked-state record identifies the approval or repository decision that unblocks execution"
         in runbook
     )
     assert runbook.endswith("\n")
@@ -205,9 +247,23 @@ def test_documentation_agent_uses_fallbacks_and_open_question_branch() -> None:
     assert "## Expected Deliverables" in runbook
     assert "## Execution Flow" in runbook
     assert "1. none" in runbook
+    assert "## Blocked-State Handling" in runbook
     assert "- Open questions remain unresolved before implementation starts" in runbook
     assert "- Design assumptions conflict with repository constraints" in runbook
     assert "- Session restore data is incomplete or inconsistent" in runbook
+    assert "## Operator Escalation Actions" in runbook
+    assert (
+        "- Pause implementation until the open questions are answered or explicitly deferred"
+        in runbook
+    )
+    assert (
+        "- Ask the operator to record the decision owner and the expected follow-up action in the run summary"
+        in runbook
+    )
+    assert (
+        "- Resume only after blocked-state outputs include the chosen next action and restart condition"
+        in runbook
+    )
 
 
 def test_documentation_agent_helper_methods_normalize_and_render() -> None:

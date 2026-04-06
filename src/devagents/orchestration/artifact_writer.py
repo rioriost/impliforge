@@ -244,6 +244,14 @@ class WorkflowArtifactWriter:
         }
         failure_report = self._build_failure_report(results)
 
+        acceptance_gate = self.build_acceptance_gate(
+            state=state,
+            requirements_result=requirements_result,
+            documentation_result=documentation_result,
+            test_execution_result=test_execution_result,
+            review_result=review_result,
+        )
+
         return {
             "workflow_id": state.workflow_id,
             "model": state.model,
@@ -273,6 +281,20 @@ class WorkflowArtifactWriter:
                 test_execution_result=test_execution_result,
                 fix_result=fix_result,
             ),
+            "acceptance_gate": acceptance_gate,
+            "completion_evidence": {
+                "mvp_artifacts_persisted": bool(state.artifacts),
+                "acceptance_ready": bool(acceptance_gate.get("ready_for_completion")),
+                "acceptance_criteria_count": len(
+                    self._normalize_list(acceptance_gate.get("acceptance_criteria"))
+                ),
+                "completed_task_count": len(state.completed_tasks()),
+                "completed_tasks": [task.task_id for task in state.completed_tasks()],
+                "docs_artifacts": [
+                    path for path in state.artifacts if str(path).startswith("docs/")
+                ],
+                "artifact_count": len(state.artifacts),
+            },
             "results": results,
             "failure_report": failure_report,
         }
@@ -311,10 +333,16 @@ class WorkflowArtifactWriter:
             documentation_result.outputs.get("resolved_decisions", []),
             review_result.outputs.get("resolved_decisions", []),
         )
+        deferred_open_questions = self._merge_unique_strings(
+            normalized_requirements.get("deferred_open_questions", []),
+            documentation_result.outputs.get("deferred_open_questions", []),
+            review_result.outputs.get("deferred_open_questions", []),
+        )
         unresolved_open_questions = [
             question
             for question in open_questions
             if question not in resolved_decisions
+            and question not in deferred_open_questions
         ]
         documentation_updated = bool(documentation_bundle) or any(
             path.startswith("docs/") for path in state.changed_files
@@ -375,6 +403,7 @@ class WorkflowArtifactWriter:
             "unresolved_issues": unresolved_issues,
             "open_questions": open_questions,
             "resolved_decisions": resolved_decisions,
+            "deferred_open_questions": deferred_open_questions,
             "unresolved_open_questions": unresolved_open_questions,
             "documentation_updated": documentation_updated,
         }
@@ -492,6 +521,13 @@ class WorkflowArtifactWriter:
                     f"- open_questions: {self._format_list_or_none(acceptance_gate.get('open_questions'))}",
                     f"- resolved_decisions: {self._format_list_or_none(acceptance_gate.get('resolved_decisions'))}",
                     f"- unresolved_open_questions: {self._format_list_or_none(acceptance_gate.get('unresolved_open_questions'))}",
+                    "",
+                    "## Completion Evidence",
+                    f"- mvp_artifacts_persisted: {bool(state.artifacts)}",
+                    f"- completed_task_count: {len(state.completed_tasks())}",
+                    f"- completed_tasks: {self._format_list_or_none([task.task_id for task in state.completed_tasks()])}",
+                    f"- artifact_count: {len(state.artifacts)}",
+                    f"- docs_artifacts: {self._format_list_or_none([path for path in state.artifacts if str(path).startswith('docs/')])}",
                 ]
             )
 
@@ -775,6 +811,11 @@ class WorkflowArtifactWriter:
         if unresolved_issues:
             actions.append(
                 "Keep unresolved issues explicitly tracked in the final handoff"
+            )
+
+        if "open_questions_resolved_or_deferred" in failed_checks:
+            actions.append(
+                "Resolve or explicitly defer every remaining open question before declaring completion"
             )
 
         return actions or [
