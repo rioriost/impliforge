@@ -2,85 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from devagents.agents.base import AgentResult, AgentTask
+from devagents.orchestration.workflow import (
+    TaskStatus,
+    WorkflowPhase,
+    WorkflowState,
+    create_workflow_state,
+)
+
 DEFAULT_MODEL = "gpt-5.4"
-
-
-@dataclass(slots=True)
-class AgentTask:
-    """Structured task passed to an agent."""
-
-    name: str
-    objective: str
-    inputs: dict[str, Any] = field(default_factory=dict)
-    constraints: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class AgentResult:
-    """Structured result returned by an agent."""
-
-    status: str
-    summary: str
-    outputs: dict[str, Any] = field(default_factory=dict)
-    artifacts: list[str] = field(default_factory=list)
-    next_actions: list[str] = field(default_factory=list)
-    risks: list[str] = field(default_factory=list)
-
-
-@dataclass(slots=True)
-class WorkflowState:
-    """Minimal workflow state for orchestration."""
-
-    requirement: str
-    workflow_id: str
-    model: str = DEFAULT_MODEL
-    phase: str = "initialized"
-    completed_steps: list[str] = field(default_factory=list)
-    pending_steps: list[str] = field(
-        default_factory=lambda: [
-            "requirements_analysis",
-            "planning",
-            "implementation",
-            "testing",
-            "review",
-            "finalization",
-        ]
-    )
-    artifacts: list[str] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
-    open_questions: list[str] = field(default_factory=list)
-    risks: list[str] = field(default_factory=list)
-
-    def advance(self, phase: str, completed_step: str | None = None) -> None:
-        self.phase = phase
-        if completed_step and completed_step not in self.completed_steps:
-            self.completed_steps.append(completed_step)
-        if completed_step and completed_step in self.pending_steps:
-            self.pending_steps.remove(completed_step)
-
-    def add_artifact(self, path: str | Path) -> None:
-        artifact = Path(path).as_posix()
-        if artifact not in self.artifacts:
-            self.artifacts.append(artifact)
-
-    def add_note(self, note: str) -> None:
-        if note:
-            self.notes.append(note)
-
-    def add_risks(self, risks: list[str]) -> None:
-        for risk in risks:
-            if risk not in self.risks:
-                self.risks.append(risk)
-
-    def add_open_questions(self, questions: list[str]) -> None:
-        for question in questions:
-            if question not in self.open_questions:
-                self.open_questions.append(question)
 
 
 class Agent(Protocol):
@@ -116,9 +50,9 @@ class Orchestrator:
 
     async def run(self, requirement: str) -> WorkflowState:
         """Run the minimal end-to-end workflow."""
-        state = WorkflowState(
-            requirement=requirement,
+        state = create_workflow_state(
             workflow_id=self._build_workflow_id(),
+            requirement=requirement,
             model=self.model,
         )
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -134,10 +68,12 @@ class Orchestrator:
         )
         self._apply_result(
             state,
-            phase="requirements_analyzed",
+            phase=WorkflowPhase.REQUIREMENTS_ANALYZED,
             completed_step="requirements_analysis",
             result=requirements_result,
         )
+        if not requirements_result.is_success:
+            return state
 
         planning_result = await self.dispatch(
             self.planning_agent,
@@ -153,10 +89,12 @@ class Orchestrator:
         )
         self._apply_result(
             state,
-            phase="planned",
+            phase=WorkflowPhase.PLANNED,
             completed_step="planning",
             result=planning_result,
         )
+        if not planning_result.is_success:
+            return state
 
         if self.implementation_agent is not None:
             implementation_result = await self.dispatch(
@@ -173,16 +111,24 @@ class Orchestrator:
             )
             self._apply_result(
                 state,
-                phase="implementing",
+                phase=WorkflowPhase.IMPLEMENTING,
                 completed_step="implementation",
                 result=implementation_result,
+            )
+            if not implementation_result.is_success:
+                return state
+        else:
+            state.update_task_status(
+                "implementation",
+                TaskStatus.SKIPPED,
+                note="Implementation agent was not configured.",
             )
 
         if self.test_agent is not None:
             test_result = await self.dispatch(
                 self.test_agent,
                 AgentTask(
-                    name="testing",
+                    name="test_execution",
                     objective="Validate the implementation",
                     inputs={"requirement": requirement},
                 ),
@@ -190,9 +136,22 @@ class Orchestrator:
             )
             self._apply_result(
                 state,
-                phase="testing",
-                completed_step="testing",
+                phase=WorkflowPhase.TESTING,
+                completed_step="test_execution",
                 result=test_result,
+            )
+            if not test_result.is_success:
+                return state
+        else:
+            state.update_task_status(
+                "test_design",
+                TaskStatus.SKIPPED,
+                note="Test agent was not configured.",
+            )
+            state.update_task_status(
+                "test_execution",
+                TaskStatus.SKIPPED,
+                note="Test agent was not configured.",
             )
 
         if self.review_agent is not None:
@@ -207,13 +166,20 @@ class Orchestrator:
             )
             self._apply_result(
                 state,
-                phase="reviewing",
+                phase=WorkflowPhase.REVIEWING,
                 completed_step="review",
                 result=review_result,
             )
+            if not review_result.is_success:
+                return state
+        else:
+            state.update_task_status(
+                "review",
+                TaskStatus.SKIPPED,
+                note="Review agent was not configured.",
+            )
 
-        state.advance("completed", "finalization")
-        state.add_note("Workflow completed.")
+        self._finalize_success(state)
         return state
 
     async def dispatch(
@@ -229,14 +195,20 @@ class Orchestrator:
         """Collect a compact workflow summary."""
         return {
             "workflow_id": state.workflow_id,
-            "phase": state.phase,
+            "phase": state.phase.value,
             "model": state.model,
-            "completed_steps": list(state.completed_steps),
-            "pending_steps": list(state.pending_steps),
+            "task_counts": {
+                "pending": len(state.pending_tasks()),
+                "in_progress": len(state.in_progress_tasks()),
+                "blocked": len(state.blocked_tasks()),
+                "completed": len(state.completed_tasks()),
+                "failed": len(state.failed_tasks()),
+            },
             "artifacts": list(state.artifacts),
             "notes": list(state.notes),
             "open_questions": list(state.open_questions),
             "risks": list(state.risks),
+            "changed_files": list(state.changed_files),
         }
 
     def handle_failure(
@@ -247,7 +219,8 @@ class Orchestrator:
         reason: str,
     ) -> WorkflowState:
         """Mark the workflow as failed with a reason."""
-        state.phase = "failed"
+        state.set_phase(WorkflowPhase.FAILED)
+        state.update_task_status(step_name, TaskStatus.FAILED, note=reason)
         state.add_note(f"{step_name} failed: {reason}")
         return state
 
@@ -259,11 +232,15 @@ class Orchestrator:
         self,
         state: WorkflowState,
         *,
-        phase: str,
+        phase: WorkflowPhase,
         completed_step: str,
         result: AgentResult,
     ) -> None:
-        if result.status != "completed":
+        task = state.require_task(completed_step)
+        task.mark_in_progress(getattr(task, "owner", None))
+        state.touch()
+
+        if not result.is_success:
             self.handle_failure(
                 state,
                 step_name=completed_step,
@@ -271,18 +248,49 @@ class Orchestrator:
             )
             return
 
-        state.advance(phase, completed_step)
+        task.mark_completed(outputs=result.outputs)
+        state.touch()
+        state.set_phase(phase)
         state.add_note(result.summary)
-        state.add_risks(result.risks)
+        for risk in result.risks:
+            if risk:
+                state.add_risk(str(risk))
 
         open_questions = result.outputs.get("open_questions", [])
         if isinstance(open_questions, list):
-            state.add_open_questions(
-                [str(question) for question in open_questions if question]
-            )
+            for question in open_questions:
+                if question:
+                    state.add_open_question(str(question))
+
+        changed_files = result.outputs.get("changed_files", [])
+        if isinstance(changed_files, list):
+            for changed_file in changed_files:
+                if changed_file:
+                    state.add_changed_file(str(changed_file))
 
         for artifact in result.artifacts:
             state.add_artifact(artifact)
+
+    def _finalize_success(self, state: WorkflowState) -> None:
+        for dependency_id in ("documentation", "review"):
+            dependency_task = state.require_task(dependency_id)
+            if dependency_task.status == TaskStatus.PENDING:
+                dependency_task.mark_skipped(
+                    "Dependency was not executed in the minimal orchestrator flow."
+                )
+
+        finalization_task = state.require_task("finalization")
+        finalization_task.mark_completed(
+            outputs={
+                "next_actions": [
+                    "Persist final workflow summary",
+                    "Review generated artifacts",
+                ]
+            }
+        )
+        state.touch()
+        state.set_phase(WorkflowPhase.COMPLETED)
+        state.add_note("Workflow completed.")
 
     def _build_workflow_id(self) -> str:
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")

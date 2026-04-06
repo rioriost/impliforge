@@ -593,8 +593,8 @@ class CopilotClient:
         """Import the public SDK client module."""
         try:
             import copilot as client_module
-            from copilot import CopilotClient as _  # noqa: F401
-            from copilot import SubprocessConfig as _  # noqa: F401
+            from copilot import CopilotClient as _CopilotClient  # noqa: F401
+            from copilot import SubprocessConfig as _SubprocessConfig  # noqa: F401
 
             return client_module
         except ImportError as exc:

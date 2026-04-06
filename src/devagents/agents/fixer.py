@@ -17,7 +17,7 @@ class FixerAgent(BaseAgent):
         normalized_requirements = self._as_dict(
             task.inputs.get("normalized_requirements", {})
         )
-        plan = self._as_dict(task.inputs.get("plan", {}))
+
         documentation_bundle = self._as_dict(
             task.inputs.get("documentation_bundle", {})
         )
