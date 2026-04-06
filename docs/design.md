@@ -8,17 +8,20 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 - GitHub Copilot SDK is isolated behind a client layer
 - Session continuity is handled through snapshot and resume flow
 - Model routing is selected per task kind
+- `main.py` の orchestrator は phase sequencing を中心に保ち、成果物保存と edit 実行は専用 helper に分離する
 
 ## Constraints
 - Use GitHub Copilot SDK as the orchestration foundation
 - Default model is GPT-5.4 with task-aware routing
 - Development workflow is managed with uv
 - Copilot SDK integration points must be isolated behind a client layer
+- Orchestrator responsibilities should stay thin by delegating artifact persistence and edit execution to dedicated helpers
 
 ## Acceptance Criteria
 - A multi-agent workflow exists with an orchestrator
 - Session rotation can preserve context through persistence
 - Planning, implementation, testing, and review are represented
+- Artifact persistence and safe edit execution are separated from phase sequencing logic
 
 ## Inferred Capabilities
 - requirements_analysis
@@ -34,6 +37,8 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 2. Implement orchestrator and CLI entrypoint
 3. Add session persistence and model routing
 4. Add implementation, test, and review agents
+5. Extract artifact persistence and edit execution into dedicated orchestration helpers
+6. Commonize phase execution for routing, Copilot request construction, and agent dispatch
 
 ## Task Breakdown
 - `requirements_analysis`: Normalize the incoming requirement and extract constraints.
@@ -52,6 +57,19 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
   - depends_on: implementation, test_execution
 - `finalization`: Prepare final summary and completion artifacts.
   - depends_on: documentation, review
+
+## Current Implementation Shape
+- `src/devagents/main.py`
+  - `SkeletonOrchestrator` が workflow の phase 順序、依存注入、session rotation の呼び出しを担当する
+  - phase 実行は `_execute_phase` に共通化され、routing / Copilot request / agent dispatch / result 適用をまとめて扱う
+- `src/devagents/orchestration/artifact_writer.py`
+  - `WorkflowArtifactWriter` が design/runbook/test/review/fix の文書出力、final summary 生成、workflow state / session snapshot / run summary 保存を担当する
+- `src/devagents/orchestration/edit_phase.py`
+  - `EditPhaseOrchestrator` が safe edit operations 構築、allowlisted file edits、structured code edit request 生成と適用を担当する
+- `src/devagents/orchestration/orchestrator.py`
+  - minimal orchestrator 実装を shared agent interfaces と canonical workflow state に揃えた参照実装として保持する
+- `src/devagents/orchestration/workflow.py`
+  - canonical な `WorkflowState`、`WorkflowTask`、phase / task status、default task graph を提供する
 
 ## Out of Scope
 - Web UI
@@ -74,6 +92,9 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 - persistent context は `artifacts/workflow-state.json`、`artifacts/sessions/<session_id>/session-snapshot.json`、`artifacts/summaries/<workflow_id>/run-summary.json` に保存する。
 - 復元粒度は workflow/session 単位とし、`requirement`、`phase`、`workflow_id`、`session_id`、完了済みタスク、未完了タスク、直近要約、resume prompt を保証対象にする。
 - delete 操作、広範囲 overwrite、依存追加、実行環境変更は human approval 必須とする。
+- `main.py` の `SkeletonOrchestrator` は phase の並びと依存注入を主責務とし、成果物永続化は `orchestration/artifact_writer.py`、safe edit / structured code edit は `orchestration/edit_phase.py` に委譲する。
+- phase 実行の routing、Copilot request 構築、agent dispatch、result 適用は `_execute_phase` に共通化する。
+- `orchestration/orchestrator.py` の minimal orchestrator は shared agent interfaces と canonical workflow state を使う。
 
 ## Copilot Draft Notes
 [dry-run] Copilot SDK response placeholder
