@@ -135,31 +135,43 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
     assert fix_plan["edit_proposals"] == [
         {
             "proposal_id": "edit-1",
-            "mode": "update",
+            "mode": "structured_update",
+            "summary": "Review severity is still elevated",
             "targets": [
                 "src/impliforge/agents/fixer.py",
                 "impliforge/tests/test_agents_fixer.py",
             ],
-            "summary": "Review severity is still elevated",
             "instructions": [
                 "Keep the change small and directly tied to the unresolved issue.",
                 "Prefer updating generated docs and implementation proposal artifacts first.",
                 "Confirm the issue no longer appears in review or test outputs, and record which re-run review/test steps verify the fix",
             ],
+            "edits": [],
+            "approval_policy": "docs_artifacts_only",
+            "safe_edit_scope": "docs_artifacts",
+            "consumability": "safe_editor",
+            "requires_explicit_approval": False,
+            "safe_edit_ready": True,
         },
         {
             "proposal_id": "edit-2",
-            "mode": "update",
+            "mode": "structured_update",
+            "summary": "Validation output needs another pass",
             "targets": [
                 "src/impliforge/agents/fixer.py",
                 "impliforge/tests/test_agents_fixer.py",
             ],
-            "summary": "Validation output needs another pass",
             "instructions": [
                 "Keep the change small and directly tied to the unresolved issue.",
                 "Prefer updating generated docs and implementation proposal artifacts first.",
                 "Confirm the issue no longer appears in review or test outputs, and record which re-run review/test steps verify the fix",
             ],
+            "edits": [],
+            "approval_policy": "docs_artifacts_only",
+            "safe_edit_scope": "docs_artifacts",
+            "consumability": "safe_editor",
+            "requires_explicit_approval": False,
+            "safe_edit_ready": True,
         },
     ]
     assert fix_plan["revalidation_plan"] == [
@@ -200,7 +212,7 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
     assert "## Fix Slices" in report
     assert "`fix-1`" in report
     assert "## Edit Proposals" in report
-    assert "`edit-2` [update]" in report
+    assert "`edit-2` [structured_update]" in report
     assert "## Copilot Draft Notes" in report
     assert "Copilot suggested a narrow follow-up edit." in report
 
@@ -386,14 +398,20 @@ def test_fixer_run_without_fix_loop_uses_recommendation_and_completion_paths() -
     assert fix_plan["edit_proposals"] == [
         {
             "proposal_id": "edit-1",
-            "mode": "update",
-            "targets": ["docs/fix-report.md"],
+            "mode": "structured_update",
             "summary": "Tighten generated artifacts",
+            "targets": ["docs/fix-report.md"],
             "instructions": [
                 "Keep the change small and directly tied to the unresolved issue.",
                 "Prefer updating generated docs and implementation proposal artifacts first.",
                 "Confirm the recommendation is reflected in regenerated artifacts and visible in the follow-up review output",
             ],
+            "edits": [],
+            "approval_policy": "docs_artifacts_only",
+            "safe_edit_scope": "docs_artifacts",
+            "consumability": "safe_editor",
+            "requires_explicit_approval": False,
+            "safe_edit_ready": True,
         }
     ]
     assert fix_plan["revalidation_plan"] == [
@@ -447,18 +465,24 @@ def test_fixer_build_edit_proposals_falls_back_to_related_targets_and_docs() -> 
     assert proposals == [
         {
             "proposal_id": "edit-fallback-1",
-            "mode": "update",
+            "mode": "structured_update",
+            "summary": "Tighten generated artifacts to address review feedback.",
             "targets": [
                 "src/impliforge/agents/fixer.py",
                 "docs/design.md",
                 "docs/runbook.md",
             ],
-            "summary": "Tighten generated artifacts to address review feedback.",
             "instructions": [
                 "Update the smallest set of files needed to resolve the review concern.",
                 "Preserve existing workflow structure and artifact naming.",
                 "Re-run test_execution and review after the edit.",
             ],
+            "edits": [],
+            "approval_policy": "docs_artifacts_only",
+            "safe_edit_scope": "docs_artifacts",
+            "consumability": "safe_editor",
+            "requires_explicit_approval": False,
+            "safe_edit_ready": True,
         }
     ]
 
@@ -512,26 +536,38 @@ def test_fixer_helpers_cover_fallback_and_rendering_branches() -> None:
         [
             {
                 "proposal_id": "edit-1",
-                "mode": "update",
+                "mode": "structured_update",
                 "summary": "Apply fix",
                 "targets": ["a.py"],
                 "instructions": ["Do the smallest change"],
+                "approval_policy": "docs_artifacts_only",
+                "consumability": "safe_editor",
+                "safe_edit_ready": True,
             },
             {
                 "proposal_id": "edit-2",
-                "mode": "update",
+                "mode": "structured_update",
                 "summary": "",
                 "targets": [],
                 "instructions": [],
+                "approval_policy": "",
+                "consumability": "",
+                "safe_edit_ready": False,
             },
             "skip",
         ]
     ) == [
-        "- `edit-1` [update]: Apply fix",
+        "- `edit-1` [structured_update]: Apply fix",
         "  - targets: a.py",
+        "  - approval_policy: docs_artifacts_only",
+        "  - consumability: safe_editor",
+        "  - safe_edit_ready: True",
         "  - instruction: Do the smallest change",
-        "- `edit-2` [update]: TBD",
+        "- `edit-2` [structured_update]: TBD",
         "  - targets: none",
+        "  - approval_policy: none",
+        "  - consumability: none",
+        "  - safe_edit_ready: False",
         "  - instruction: none",
     ]
 

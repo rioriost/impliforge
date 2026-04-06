@@ -150,6 +150,23 @@ class WorkflowArtifactWriter:
             f"workflows/{state.workflow_id}/workflow-details.json",
             workflow_details_payload,
         )
+        safe_edit_results_path = None
+        safe_edit_results_payload = self.build_safe_edit_results_payload(state=state)
+        if safe_edit_results_payload is not None:
+            safe_edit_results_path = self.state_store.save_named_payload(
+                f"workflows/{state.workflow_id}/safe-edit-results.json",
+                safe_edit_results_payload,
+            )
+
+        structured_code_edit_results_path = None
+        structured_code_edit_results_payload = (
+            self.build_structured_code_edit_results_payload(state=state)
+        )
+        if structured_code_edit_results_payload is not None:
+            structured_code_edit_results_path = self.state_store.save_named_payload(
+                f"workflows/{state.workflow_id}/structured-code-edit-results.json",
+                structured_code_edit_results_payload,
+            )
         session_snapshot_path = self.state_store.save_session_snapshot(session_snapshot)
         run_summary_payload = self.build_run_summary_payload(
             state=state,
@@ -184,12 +201,18 @@ class WorkflowArtifactWriter:
             content=final_summary,
         )
 
-        for path in (
+        artifact_paths = [
             workflow_state_path,
             workflow_details_path,
             session_snapshot_path,
             run_summary_path,
-        ):
+        ]
+        if safe_edit_results_path is not None:
+            artifact_paths.append(safe_edit_results_path)
+        if structured_code_edit_results_path is not None:
+            artifact_paths.append(structured_code_edit_results_path)
+
+        for path in artifact_paths:
             self._record_artifact(state, path)
 
         finalization_task = state.require_task("finalization")
@@ -221,13 +244,20 @@ class WorkflowArtifactWriter:
             outputs=finalization_task.outputs,
         )
 
-        return {
+        paths = {
             "workflow_state": workflow_state_path.as_posix(),
             "workflow_details": workflow_details_path.as_posix(),
             "session_snapshot": session_snapshot_path.as_posix(),
             "run_summary": run_summary_path.as_posix(),
             "final_summary": final_summary_path.as_posix(),
         }
+        if safe_edit_results_path is not None:
+            paths["safe_edit_results"] = safe_edit_results_path.as_posix()
+        if structured_code_edit_results_path is not None:
+            paths["structured_code_edit_results"] = (
+                structured_code_edit_results_path.as_posix()
+            )
+        return paths
 
     def build_workflow_details_payload(
         self,
@@ -255,6 +285,84 @@ class WorkflowArtifactWriter:
             "test_execution_result": self.result_to_dict(test_execution_result),
             "review_result": self.result_to_dict(review_result),
             "fix_result": self.result_to_dict(fix_result) if fix_result else None,
+        }
+
+    def build_safe_edit_results_payload(
+        self,
+        *,
+        state: WorkflowState,
+    ) -> dict[str, Any] | None:
+        """Build the persisted safe edit execution payload."""
+        implementation_task = state.get_task("implementation")
+        if implementation_task is None:
+            return None
+
+        results = implementation_task.outputs.get("safe_edit_results")
+        summary = implementation_task.outputs.get("safe_edit_summary")
+
+        if not isinstance(results, list) or not results:
+            return None
+
+        normalized_results = self._normalize_dict_list(results)
+        normalized_summary = self._as_dict(summary)
+
+        return {
+            "workflow_id": state.workflow_id,
+            "phase": state.phase.value,
+            "task_id": "implementation",
+            "results": normalized_results,
+            "summary": {
+                "request_count": int(
+                    normalized_summary.get("request_count", len(normalized_results))
+                ),
+                "applied_count": int(normalized_summary.get("applied_count", 0)),
+                "denied_count": int(normalized_summary.get("denied_count", 0)),
+                "applied_paths": self._normalize_list(
+                    normalized_summary.get("applied_paths", [])
+                ),
+                "denied_paths": self._normalize_list(
+                    normalized_summary.get("denied_paths", [])
+                ),
+            },
+        }
+
+    def build_structured_code_edit_results_payload(
+        self,
+        *,
+        state: WorkflowState,
+    ) -> dict[str, Any] | None:
+        """Build the persisted structured code edit execution payload."""
+        implementation_task = state.get_task("implementation")
+        if implementation_task is None:
+            return None
+
+        results = implementation_task.outputs.get("structured_code_edit_results")
+        summary = implementation_task.outputs.get("structured_code_edit_summary")
+
+        if not isinstance(results, list) or not results:
+            return None
+
+        normalized_results = self._normalize_dict_list(results)
+        normalized_summary = self._as_dict(summary)
+
+        return {
+            "workflow_id": state.workflow_id,
+            "phase": state.phase.value,
+            "task_id": "implementation",
+            "results": normalized_results,
+            "summary": {
+                "request_count": int(
+                    normalized_summary.get("request_count", len(normalized_results))
+                ),
+                "applied_count": int(normalized_summary.get("applied_count", 0)),
+                "denied_count": int(normalized_summary.get("denied_count", 0)),
+                "applied_paths": self._normalize_list(
+                    normalized_summary.get("applied_paths", [])
+                ),
+                "denied_paths": self._normalize_list(
+                    normalized_summary.get("denied_paths", [])
+                ),
+            },
         }
 
     def build_run_summary_payload(
@@ -331,6 +439,10 @@ class WorkflowArtifactWriter:
                 test_design_result=test_design_result,
                 test_execution_result=test_execution_result,
                 fix_result=fix_result,
+            ),
+            "safe_edit_summary": self.build_safe_edit_results_payload(state=state),
+            "structured_code_edit_summary": self.build_structured_code_edit_results_payload(
+                state=state
             ),
             "acceptance_gate": acceptance_gate,
             "completion_evidence": {
@@ -562,6 +674,11 @@ class WorkflowArtifactWriter:
         else:
             lines.append("- none")
 
+        safe_edit_summary = self.build_safe_edit_results_payload(state=state)
+        structured_code_edit_summary = self.build_structured_code_edit_results_payload(
+            state=state
+        )
+
         lines.extend(
             [
                 "",
@@ -574,12 +691,24 @@ class WorkflowArtifactWriter:
                 f"- severity: {review.get('severity', 'unknown')}",
                 f"- unresolved_issues: {self._format_list_or_none(unresolved_issues)}",
                 "",
+                "## Safe Edit Summary",
+                f"- request_count: {self._as_dict(safe_edit_summary.get('summary') if isinstance(safe_edit_summary, dict) else {}).get('request_count', 0) if safe_edit_summary else 0}",
+                f"- applied_count: {self._as_dict(safe_edit_summary.get('summary') if isinstance(safe_edit_summary, dict) else {}).get('applied_count', 0) if safe_edit_summary else 0}",
+                f"- denied_count: {self._as_dict(safe_edit_summary.get('summary') if isinstance(safe_edit_summary, dict) else {}).get('denied_count', 0) if safe_edit_summary else 0}",
+                f"- applied_paths: {self._format_list_or_none(self._as_dict(safe_edit_summary.get('summary') if isinstance(safe_edit_summary, dict) else {}).get('applied_paths', [])) if safe_edit_summary else 'none'}",
+                f"- denied_paths: {self._format_list_or_none(self._as_dict(safe_edit_summary.get('summary') if isinstance(safe_edit_summary, dict) else {}).get('denied_paths', [])) if safe_edit_summary else 'none'}",
+                "",
+                "## Structured Code Edit Summary",
+                f"- request_count: {self._as_dict(structured_code_edit_summary.get('summary') if isinstance(structured_code_edit_summary, dict) else {}).get('request_count', 0) if structured_code_edit_summary else 0}",
+                f"- applied_count: {self._as_dict(structured_code_edit_summary.get('summary') if isinstance(structured_code_edit_summary, dict) else {}).get('applied_count', 0) if structured_code_edit_summary else 0}",
+                f"- denied_count: {self._as_dict(structured_code_edit_summary.get('summary') if isinstance(structured_code_edit_summary, dict) else {}).get('denied_count', 0) if structured_code_edit_summary else 0}",
+                f"- applied_paths: {self._format_list_or_none(self._as_dict(structured_code_edit_summary.get('summary') if isinstance(structured_code_edit_summary, dict) else {}).get('applied_paths', [])) if structured_code_edit_summary else 'none'}",
+                f"- denied_paths: {self._format_list_or_none(self._as_dict(structured_code_edit_summary.get('summary') if isinstance(structured_code_edit_summary, dict) else {}).get('denied_paths', [])) if structured_code_edit_summary else 'none'}",
+                "",
                 "## Fix Summary",
                 f"- fix_needed: {bool(review.get('fix_loop_required'))}",
                 f"- fix_severity: {fix_plan.get('severity', 'none') if fix_plan else 'none'}",
                 f"- fix_slice_count: {self._count_list_like(fix_plan.get('change_slices')) if fix_plan else 0}",
-                "",
-                "## Next Actions",
             ]
         )
 

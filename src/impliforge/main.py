@@ -261,6 +261,29 @@ class SkeletonOrchestrator:
             last_checkpoint=state.phase.value,
         )
 
+        implementation_task_outputs = state.require_task("implementation").outputs
+        safe_edit_summary = (
+            implementation_task_outputs.get("safe_edit_summary", {})
+            if isinstance(implementation_task_outputs, dict)
+            else {}
+        )
+        structured_code_edit_summary = (
+            implementation_task_outputs.get("structured_code_edit_summary", {})
+            if isinstance(implementation_task_outputs, dict)
+            else {}
+        )
+
+        effective_implementation_result = self._merge_agent_results(
+            effective_implementation_result,
+            AgentResult.success(
+                "safe edit execution summaries captured",
+                outputs={
+                    "safe_edit_summary": safe_edit_summary,
+                    "structured_code_edit_summary": structured_code_edit_summary,
+                },
+            ),
+        )
+
         self.artifact_writer.write_workflow_artifacts(
             state=state,
             requirement=requirement,
@@ -1303,9 +1326,67 @@ async def _run_cli(
     print(f"rotate_session: {rotation_decision.should_rotate}")
     if rotation_decision.reason:
         print(f"rotation_reason: {rotation_decision.reason}")
+    implementation_outputs = state.require_task("implementation").outputs
+    safe_edit_summary = (
+        implementation_outputs.get("safe_edit_summary", {})
+        if isinstance(implementation_outputs, dict)
+        else {}
+    )
+    structured_code_edit_summary = (
+        implementation_outputs.get("structured_code_edit_summary", {})
+        if isinstance(implementation_outputs, dict)
+        else {}
+    )
+
     print("artifacts:")
     for artifact in state.artifacts:
         print(f"  - {artifact}")
+
+    print("safe_edit_summary:")
+    print(f"  - request_count: {safe_edit_summary.get('request_count', 0)}")
+    print(f"  - applied_count: {safe_edit_summary.get('applied_count', 0)}")
+    print(f"  - denied_count: {safe_edit_summary.get('denied_count', 0)}")
+    print(
+        "  - applied_paths: "
+        + (
+            ", ".join(safe_edit_summary.get("applied_paths", []))
+            if isinstance(safe_edit_summary.get("applied_paths"), list)
+            and safe_edit_summary.get("applied_paths")
+            else "none"
+        )
+    )
+    print(
+        "  - denied_paths: "
+        + (
+            ", ".join(safe_edit_summary.get("denied_paths", []))
+            if isinstance(safe_edit_summary.get("denied_paths"), list)
+            and safe_edit_summary.get("denied_paths")
+            else "none"
+        )
+    )
+
+    print("structured_code_edit_summary:")
+    print(f"  - request_count: {structured_code_edit_summary.get('request_count', 0)}")
+    print(f"  - applied_count: {structured_code_edit_summary.get('applied_count', 0)}")
+    print(f"  - denied_count: {structured_code_edit_summary.get('denied_count', 0)}")
+    print(
+        "  - applied_paths: "
+        + (
+            ", ".join(structured_code_edit_summary.get("applied_paths", []))
+            if isinstance(structured_code_edit_summary.get("applied_paths"), list)
+            and structured_code_edit_summary.get("applied_paths")
+            else "none"
+        )
+    )
+    print(
+        "  - denied_paths: "
+        + (
+            ", ".join(structured_code_edit_summary.get("denied_paths", []))
+            if isinstance(structured_code_edit_summary.get("denied_paths"), list)
+            and structured_code_edit_summary.get("denied_paths")
+            else "none"
+        )
+    )
 
     return 0
 

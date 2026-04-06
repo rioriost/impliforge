@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from impliforge.agents.base import AgentResult, AgentTask, BaseAgent
+from impliforge.agents.proposal_utils import build_structured_edit_proposal
 from impliforge.orchestration.workflow import WorkflowState
 
 
@@ -429,18 +430,21 @@ class FixerAgent(BaseAgent):
             validation_focus = str(fix_slice.get("validation_focus", "")).strip()
 
             proposals.append(
-                {
-                    "proposal_id": f"edit-{index}",
-                    "mode": "update",
-                    "targets": targets or ["docs/fix-report.md"],
-                    "summary": goal or "Apply a focused fix slice",
-                    "instructions": [
+                build_structured_edit_proposal(
+                    proposal_id=f"edit-{index}",
+                    summary=goal or "Apply a focused fix slice",
+                    targets=targets or ["docs/fix-report.md"],
+                    instructions=[
                         "Keep the change small and directly tied to the unresolved issue.",
                         "Prefer updating generated docs and implementation proposal artifacts first.",
                         validation_focus
                         or "Re-run validation after the proposed edit is applied.",
                     ],
-                }
+                    approval_policy="docs_artifacts_only",
+                    safe_edit_scope="docs_artifacts",
+                    consumability="safe_editor",
+                    edits=[],
+                )
             )
 
         if not proposals:
@@ -458,17 +462,20 @@ class FixerAgent(BaseAgent):
                     deduped_targets.append(target)
 
             proposals.append(
-                {
-                    "proposal_id": "edit-fallback-1",
-                    "mode": "update",
-                    "targets": deduped_targets or ["docs/fix-report.md"],
-                    "summary": "Tighten generated artifacts to address review feedback.",
-                    "instructions": [
+                build_structured_edit_proposal(
+                    proposal_id="edit-fallback-1",
+                    summary="Tighten generated artifacts to address review feedback.",
+                    targets=deduped_targets or ["docs/fix-report.md"],
+                    instructions=[
                         "Update the smallest set of files needed to resolve the review concern.",
                         "Preserve existing workflow structure and artifact naming.",
                         "Re-run test_execution and review after the edit.",
                     ],
-                }
+                    approval_policy="docs_artifacts_only",
+                    safe_edit_scope="docs_artifacts",
+                    consumability="safe_editor",
+                    edits=[],
+                )
             )
 
         return proposals
@@ -486,9 +493,15 @@ class FixerAgent(BaseAgent):
             summary = str(item.get("summary", "")).strip()
             targets = self._normalize_list(item.get("targets"))
             instructions = self._normalize_list(item.get("instructions"))
+            approval_policy = str(item.get("approval_policy", "")).strip()
+            consumability = str(item.get("consumability", "")).strip()
+            safe_edit_ready = bool(item.get("safe_edit_ready", False))
 
             lines.append(f"- `{proposal_id}` [{mode}]: {summary or 'TBD'}")
             lines.append(f"  - targets: {', '.join(targets) if targets else 'none'}")
+            lines.append(f"  - approval_policy: {approval_policy or 'none'}")
+            lines.append(f"  - consumability: {consumability or 'none'}")
+            lines.append(f"  - safe_edit_ready: {safe_edit_ready}")
             if instructions:
                 for instruction in instructions:
                     lines.append(f"  - instruction: {instruction}")

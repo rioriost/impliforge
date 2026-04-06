@@ -103,6 +103,353 @@ def test_workflow_artifact_writer_persists_outputs_and_finalizes(
     assert "workflow_details" in paths
     assert paths["workflow_details"].endswith("workflow-details.json")
     assert any(path.endswith("final-summary.md") for path in state.changed_files)
+    assert "safe_edit_results" not in paths
+    assert "structured_code_edit_results" not in paths
+
+
+def test_workflow_artifact_writer_persists_structured_code_edit_results_when_present(
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "docs"
+    store_root = tmp_path / "artifacts"
+
+    writer = WorkflowArtifactWriter(
+        docs_dir=docs_dir,
+        state_store=DummyStateStore(store_root),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.require_task("implementation").outputs.update(
+        {
+            "structured_code_edit_results": [
+                {
+                    "proposal_id": "src-structured-editor-update",
+                    "relative_path": "src/impliforge/runtime/editor.py",
+                    "kind": "replace_marked_block",
+                    "approval_policy": "src_impliforge_structured_only",
+                    "consumability": "structured_code_editor",
+                    "ok": True,
+                    "changed": True,
+                    "message": "",
+                }
+            ],
+            "structured_code_edit_summary": {
+                "request_count": 1,
+                "applied_count": 1,
+                "denied_count": 0,
+                "applied_paths": ["src/impliforge/runtime/editor.py"],
+                "denied_paths": [],
+            },
+        }
+    )
+
+    requirements_result = result(
+        outputs={"normalized_requirements": {"objective": "x"}}
+    )
+    planning_result = result(outputs={"plan": {"phases": ["plan"]}})
+    documentation_result = result(
+        outputs={
+            "documentation_bundle": {"design": "present", "runbook": "present"},
+            "design_document": "# Design\n",
+            "runbook_document": "# Runbook\n",
+        }
+    )
+    implementation_result = result(
+        outputs={
+            "implementation": {
+                "change_slices": [
+                    {"name": "slice-a", "summary": "first slice"},
+                ]
+            }
+        }
+    )
+    test_design_result = result(
+        outputs={
+            "test_plan": {"test_cases": ["case-1", "case-2"]},
+            "test_plan_document": "# Test Plan\n",
+        }
+    )
+    test_execution_result = result(
+        outputs={
+            "test_results": {
+                "status": "passed",
+                "executed_checks": ["check-1"],
+            }
+        }
+    )
+    review_result = result(
+        outputs={
+            "review": {
+                "severity": "ok",
+                "unresolved_issues": [],
+                "fix_loop_required": False,
+            }
+        }
+    )
+
+    paths = writer.write_workflow_artifacts(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=requirements_result,
+        planning_result=planning_result,
+        documentation_result=documentation_result,
+        implementation_result=implementation_result,
+        test_design_result=test_design_result,
+        test_execution_result=test_execution_result,
+        review_result=review_result,
+        fix_result=None,
+        session_snapshot=DummySessionSnapshot(session_id="sess-test-001"),
+    )
+
+    assert "structured_code_edit_results" in paths
+    assert paths["structured_code_edit_results"].endswith(
+        "structured-code-edit-results.json"
+    )
+    assert any(
+        path.endswith("structured-code-edit-results.json") for path in state.artifacts
+    )
+
+    structured_results_path = (
+        store_root
+        / "workflows"
+        / state.workflow_id
+        / "structured-code-edit-results.json"
+    )
+    assert structured_results_path.exists()
+    payload = structured_results_path.read_text(encoding="utf-8")
+    assert "src-structured-editor-update" in payload
+    assert "src/impliforge/runtime/editor.py" in payload
+
+
+def test_workflow_artifact_writer_persists_safe_edit_results_when_present(
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "docs"
+    store_root = tmp_path / "artifacts"
+
+    writer = WorkflowArtifactWriter(
+        docs_dir=docs_dir,
+        state_store=DummyStateStore(store_root),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.require_task("implementation").outputs.update(
+        {
+            "safe_edit_results": [
+                {
+                    "proposal_id": "",
+                    "relative_path": "docs/design.md",
+                    "operation": "write",
+                    "approval_policy": "",
+                    "consumability": "",
+                    "ok": True,
+                    "changed": True,
+                    "message": "",
+                },
+                {
+                    "proposal_id": "edit-1",
+                    "relative_path": "docs/fix-report.md",
+                    "operation": "write",
+                    "approval_policy": "docs_artifacts_only",
+                    "consumability": "safe_editor",
+                    "ok": False,
+                    "changed": False,
+                    "message": "approval denied",
+                },
+            ],
+            "safe_edit_summary": {
+                "request_count": 2,
+                "applied_count": 1,
+                "denied_count": 1,
+                "applied_paths": ["docs/design.md"],
+                "denied_paths": ["docs/fix-report.md: approval denied"],
+            },
+        }
+    )
+
+    requirements_result = result(
+        outputs={"normalized_requirements": {"objective": "x"}}
+    )
+    planning_result = result(outputs={"plan": {"phases": ["plan"]}})
+    documentation_result = result(
+        outputs={
+            "documentation_bundle": {"design": "present", "runbook": "present"},
+            "design_document": "# Design\n",
+            "runbook_document": "# Runbook\n",
+        }
+    )
+    implementation_result = result(
+        outputs={
+            "implementation": {
+                "change_slices": [
+                    {"name": "slice-a", "summary": "first slice"},
+                ]
+            }
+        }
+    )
+    test_design_result = result(
+        outputs={
+            "test_plan": {"test_cases": ["case-1", "case-2"]},
+            "test_plan_document": "# Test Plan\n",
+        }
+    )
+    test_execution_result = result(
+        outputs={
+            "test_results": {
+                "status": "passed",
+                "executed_checks": ["check-1"],
+            }
+        }
+    )
+    review_result = result(
+        outputs={
+            "review": {
+                "severity": "ok",
+                "unresolved_issues": [],
+                "fix_loop_required": False,
+            }
+        }
+    )
+
+    paths = writer.write_workflow_artifacts(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=requirements_result,
+        planning_result=planning_result,
+        documentation_result=documentation_result,
+        implementation_result=implementation_result,
+        test_design_result=test_design_result,
+        test_execution_result=test_execution_result,
+        review_result=review_result,
+        fix_result=None,
+        session_snapshot=DummySessionSnapshot(session_id="sess-test-001"),
+    )
+
+    assert "safe_edit_results" in paths
+    assert paths["safe_edit_results"].endswith("safe-edit-results.json")
+    assert any(path.endswith("safe-edit-results.json") for path in state.artifacts)
+
+    safe_results_path = (
+        store_root / "workflows" / state.workflow_id / "safe-edit-results.json"
+    )
+    assert safe_results_path.exists()
+    payload = safe_results_path.read_text(encoding="utf-8")
+    assert "docs/design.md" in payload
+    assert "docs/fix-report.md: approval denied" in payload
+
+
+def test_build_run_summary_payload_includes_safe_edit_summary(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.require_task("implementation").outputs.update(
+        {
+            "safe_edit_results": [
+                {
+                    "proposal_id": "",
+                    "relative_path": "docs/design.md",
+                    "operation": "write",
+                    "approval_policy": "",
+                    "consumability": "",
+                    "ok": True,
+                    "changed": True,
+                    "message": "",
+                },
+                {
+                    "proposal_id": "edit-1",
+                    "relative_path": "docs/fix-report.md",
+                    "operation": "write",
+                    "approval_policy": "docs_artifacts_only",
+                    "consumability": "safe_editor",
+                    "ok": False,
+                    "changed": False,
+                    "message": "approval denied",
+                },
+            ],
+            "safe_edit_summary": {
+                "request_count": 2,
+                "applied_count": 1,
+                "denied_count": 1,
+                "applied_paths": ["docs/design.md"],
+                "denied_paths": ["docs/fix-report.md: approval denied"],
+            },
+        }
+    )
+
+    requirements_result = result(
+        outputs={"normalized_requirements": {"objective": "x"}}
+    )
+    planning_result = result(outputs={"plan": {"phases": ["plan"]}})
+    documentation_result = result(outputs={"design_document": "# Design\n"})
+    implementation_result = result(outputs={"implementation": {"change_slices": []}})
+    test_design_result = result(outputs={"test_plan": {"test_cases": ["case-1"]}})
+    test_execution_result = result(
+        outputs={"test_results": {"status": "passed", "executed_checks": ["check-1"]}}
+    )
+    review_result = result(
+        outputs={
+            "review": {
+                "severity": "low",
+                "unresolved_issues": [],
+                "fix_loop_required": False,
+            }
+        }
+    )
+    snapshot = DummySessionSnapshot(session_id="sess-test-001", token_usage_ratio=0.4)
+
+    payload = writer.build_run_summary_payload(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=requirements_result,
+        planning_result=planning_result,
+        documentation_result=documentation_result,
+        implementation_result=implementation_result,
+        test_design_result=test_design_result,
+        test_execution_result=test_execution_result,
+        review_result=review_result,
+        fix_result=None,
+        session_snapshot=snapshot,
+    )
+
+    assert payload["safe_edit_summary"] == {
+        "workflow_id": state.workflow_id,
+        "phase": state.phase.value,
+        "task_id": "implementation",
+        "results": [
+            {
+                "proposal_id": "",
+                "relative_path": "docs/design.md",
+                "operation": "write",
+                "approval_policy": "",
+                "consumability": "",
+                "ok": True,
+                "changed": True,
+                "message": "",
+            },
+            {
+                "proposal_id": "edit-1",
+                "relative_path": "docs/fix-report.md",
+                "operation": "write",
+                "approval_policy": "docs_artifacts_only",
+                "consumability": "safe_editor",
+                "ok": False,
+                "changed": False,
+                "message": "approval denied",
+            },
+        ],
+        "summary": {
+            "request_count": 2,
+            "applied_count": 1,
+            "denied_count": 1,
+            "applied_paths": ["docs/design.md"],
+            "denied_paths": ["docs/fix-report.md: approval denied"],
+        },
+    }
 
 
 def test_persist_documentation_and_text_outputs_only_write_non_blank_strings(
@@ -847,6 +1194,120 @@ def test_build_run_summary_payload_includes_change_impact_summary_from_slices(
     ]
 
 
+def test_build_run_summary_payload_includes_structured_code_edit_summary(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.require_task("implementation").outputs.update(
+        {
+            "structured_code_edit_results": [
+                {
+                    "proposal_id": "src-structured-editor-update",
+                    "relative_path": "src/impliforge/runtime/editor.py",
+                    "kind": "replace_marked_block",
+                    "approval_policy": "src_impliforge_structured_only",
+                    "consumability": "structured_code_editor",
+                    "ok": True,
+                    "changed": True,
+                    "message": "",
+                },
+                {
+                    "proposal_id": "src-structured-main-update",
+                    "relative_path": "src/impliforge/main.py",
+                    "kind": "replace_marked_block",
+                    "approval_policy": "src_impliforge_structured_only",
+                    "consumability": "structured_code_editor",
+                    "ok": False,
+                    "changed": False,
+                    "message": "approval denied",
+                },
+            ],
+            "structured_code_edit_summary": {
+                "request_count": 2,
+                "applied_count": 1,
+                "denied_count": 1,
+                "applied_paths": ["src/impliforge/runtime/editor.py"],
+                "denied_paths": ["src/impliforge/main.py: approval denied"],
+            },
+        }
+    )
+
+    requirements_result = result(
+        outputs={"normalized_requirements": {"objective": "x"}}
+    )
+    planning_result = result(outputs={"plan": {"phases": ["plan"]}})
+    documentation_result = result(outputs={"design_document": "# Design\n"})
+    implementation_result = result(outputs={"implementation": {"change_slices": []}})
+    test_design_result = result(outputs={"test_plan": {"test_cases": ["case-1"]}})
+    test_execution_result = result(
+        outputs={"test_results": {"status": "passed", "executed_checks": ["check-1"]}}
+    )
+    review_result = result(
+        outputs={
+            "review": {
+                "severity": "low",
+                "unresolved_issues": [],
+                "fix_loop_required": False,
+            }
+        }
+    )
+    snapshot = DummySessionSnapshot(session_id="sess-test-001", token_usage_ratio=0.4)
+
+    payload = writer.build_run_summary_payload(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=requirements_result,
+        planning_result=planning_result,
+        documentation_result=documentation_result,
+        implementation_result=implementation_result,
+        test_design_result=test_design_result,
+        test_execution_result=test_execution_result,
+        review_result=review_result,
+        fix_result=None,
+        session_snapshot=snapshot,
+    )
+
+    assert payload["structured_code_edit_summary"] == {
+        "workflow_id": state.workflow_id,
+        "phase": state.phase.value,
+        "task_id": "implementation",
+        "results": [
+            {
+                "proposal_id": "src-structured-editor-update",
+                "relative_path": "src/impliforge/runtime/editor.py",
+                "kind": "replace_marked_block",
+                "approval_policy": "src_impliforge_structured_only",
+                "consumability": "structured_code_editor",
+                "ok": True,
+                "changed": True,
+                "message": "",
+            },
+            {
+                "proposal_id": "src-structured-main-update",
+                "relative_path": "src/impliforge/main.py",
+                "kind": "replace_marked_block",
+                "approval_policy": "src_impliforge_structured_only",
+                "consumability": "structured_code_editor",
+                "ok": False,
+                "changed": False,
+                "message": "approval denied",
+            },
+        ],
+        "summary": {
+            "request_count": 2,
+            "applied_count": 1,
+            "denied_count": 1,
+            "applied_paths": ["src/impliforge/runtime/editor.py"],
+            "denied_paths": ["src/impliforge/main.py: approval denied"],
+        },
+    }
+
+
 def test_build_run_summary_payload_falls_back_to_state_changed_files_for_change_impact_summary(
     tmp_path: Path,
 ) -> None:
@@ -1353,6 +1814,152 @@ def test_build_final_summary_renders_acceptance_gate_when_present(
     assert "- blocked_work_visible: True" in summary
     assert "- Re-run validation" in summary
     assert "- Update docs" in summary
+
+
+def test_build_final_summary_includes_safe_edit_summary(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.require_task("implementation").outputs.update(
+        {
+            "safe_edit_results": [
+                {
+                    "proposal_id": "",
+                    "relative_path": "docs/design.md",
+                    "operation": "write",
+                    "approval_policy": "",
+                    "consumability": "",
+                    "ok": True,
+                    "changed": True,
+                    "message": "",
+                },
+                {
+                    "proposal_id": "edit-1",
+                    "relative_path": "docs/fix-report.md",
+                    "operation": "write",
+                    "approval_policy": "docs_artifacts_only",
+                    "consumability": "safe_editor",
+                    "ok": False,
+                    "changed": False,
+                    "message": "approval denied",
+                },
+            ],
+            "safe_edit_summary": {
+                "request_count": 2,
+                "applied_count": 1,
+                "denied_count": 1,
+                "applied_paths": ["docs/design.md"],
+                "denied_paths": ["docs/fix-report.md: approval denied"],
+            },
+        }
+    )
+
+    summary = writer.build_final_summary(
+        state=state,
+        requirement=state.requirement,
+        implementation_result=result(
+            outputs={"implementation": {"change_slices": "invalid"}}
+        ),
+        test_design_result=result(outputs={"test_plan": {"test_cases": "invalid"}}),
+        test_execution_result=result(
+            outputs={"test_results": {"status": "passed", "executed_checks": "invalid"}}
+        ),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "low",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                }
+            }
+        ),
+        fix_result=None,
+    )
+
+    assert "## Safe Edit Summary" in summary
+    assert "- request_count: 2" in summary
+    assert "- applied_count: 1" in summary
+    assert "- denied_count: 1" in summary
+    assert "- applied_paths: docs/design.md" in summary
+    assert "- denied_paths: docs/fix-report.md: approval denied" in summary
+
+
+def test_build_final_summary_includes_structured_code_edit_summary(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.require_task("implementation").outputs.update(
+        {
+            "structured_code_edit_results": [
+                {
+                    "proposal_id": "src-structured-editor-update",
+                    "relative_path": "src/impliforge/runtime/editor.py",
+                    "kind": "replace_marked_block",
+                    "approval_policy": "src_impliforge_structured_only",
+                    "consumability": "structured_code_editor",
+                    "ok": True,
+                    "changed": True,
+                    "message": "",
+                },
+                {
+                    "proposal_id": "src-structured-main-update",
+                    "relative_path": "src/impliforge/main.py",
+                    "kind": "replace_marked_block",
+                    "approval_policy": "src_impliforge_structured_only",
+                    "consumability": "structured_code_editor",
+                    "ok": False,
+                    "changed": False,
+                    "message": "approval denied",
+                },
+            ],
+            "structured_code_edit_summary": {
+                "request_count": 2,
+                "applied_count": 1,
+                "denied_count": 1,
+                "applied_paths": ["src/impliforge/runtime/editor.py"],
+                "denied_paths": ["src/impliforge/main.py: approval denied"],
+            },
+        }
+    )
+
+    summary = writer.build_final_summary(
+        state=state,
+        requirement=state.requirement,
+        implementation_result=result(
+            outputs={"implementation": {"change_slices": "invalid"}}
+        ),
+        test_design_result=result(outputs={"test_plan": {"test_cases": "invalid"}}),
+        test_execution_result=result(
+            outputs={"test_results": {"status": "passed", "executed_checks": "invalid"}}
+        ),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "low",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                }
+            }
+        ),
+        fix_result=None,
+    )
+
+    assert "## Structured Code Edit Summary" in summary
+    assert "- request_count: 2" in summary
+    assert "- applied_count: 1" in summary
+    assert "- denied_count: 1" in summary
+    assert "- applied_paths: src/impliforge/runtime/editor.py" in summary
+    assert "- denied_paths: src/impliforge/main.py: approval denied" in summary
 
 
 def test_build_acceptance_gate_blocks_when_open_questions_remain_unresolved(

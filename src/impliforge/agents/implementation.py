@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from impliforge.agents.base import AgentResult, AgentTask, BaseAgent
+from impliforge.agents.proposal_utils import (
+    build_structured_edit_proposal,
+    normalize_edit_payloads,
+)
 from impliforge.orchestration.workflow import WorkflowState
 
 
@@ -354,46 +358,16 @@ class ImplementationAgent(BaseAgent):
         safe_edit_scope: str,
         consumability: str,
     ) -> dict[str, Any]:
-        normalized_targets = self._normalize_list(targets)
-        normalized_instructions = self._normalize_list(instructions)
-        normalized_edits = self._normalize_edits(edits)
-
-        return {
-            "proposal_id": proposal_id,
-            "mode": "structured_update",
-            "summary": summary,
-            "targets": normalized_targets,
-            "instructions": normalized_instructions,
-            "edits": normalized_edits,
-            "approval_policy": approval_policy,
-            "safe_edit_scope": safe_edit_scope,
-            "consumability": consumability,
-            "requires_explicit_approval": approval_policy != "docs_artifacts_only",
-            "safe_edit_ready": bool(normalized_targets and normalized_edits),
-        }
+        return build_structured_edit_proposal(
+            proposal_id=proposal_id,
+            summary=summary,
+            targets=self._normalize_list(targets),
+            instructions=self._normalize_list(instructions),
+            edits=edits,
+            approval_policy=approval_policy,
+            safe_edit_scope=safe_edit_scope,
+            consumability=consumability,
+        )
 
     def _normalize_edits(self, value: Any) -> list[dict[str, str]]:
-        if not isinstance(value, list):
-            return []
-
-        normalized: list[dict[str, str]] = []
-        for item in value:
-            if not isinstance(item, dict):
-                continue
-
-            edit_kind = str(item.get("edit_kind", "")).strip()
-            target_symbol = str(item.get("target_symbol", "")).strip()
-            intent = str(item.get("intent", "")).strip()
-
-            if not edit_kind or not target_symbol or not intent:
-                continue
-
-            normalized.append(
-                {
-                    "edit_kind": edit_kind,
-                    "target_symbol": target_symbol,
-                    "intent": intent,
-                }
-            )
-
-        return normalized
+        return normalize_edit_payloads(value)

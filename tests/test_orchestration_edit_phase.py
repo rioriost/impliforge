@@ -15,6 +15,7 @@ from orchestration_test_helpers import (
 from impliforge.orchestration.artifact_writer import WorkflowArtifactWriter
 from impliforge.orchestration.edit_phase import EditPhaseOrchestrator
 from impliforge.runtime.code_editing import CodeEditKind, CodeEditRiskFlag
+from impliforge.runtime.editor import EditOperationKind
 
 
 def test_edit_phase_builds_safe_edit_operations_for_docs_and_artifacts(
@@ -399,3 +400,453 @@ def test_edit_phase_records_note_when_structured_code_edit_is_denied(
     assert code_editor.requests[0].consumability == "structured_code_editor"
     assert "src/impliforge/runtime/editor.py" not in state.changed_files
     assert any("safe edit phase" in note for note in state.notes)
+
+
+def test_edit_phase_records_structured_code_edit_results_in_state_outputs(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    code_editor = DummyCodeEditor()
+    orchestrator = EditPhaseOrchestrator(
+        safe_editor=DummySafeEditor(),
+        code_editor=code_editor,
+        artifact_writer=writer,
+    )
+    state = build_state()
+
+    implementation_result = result(
+        outputs={
+            "implementation": {
+                "edit_proposals": [
+                    {
+                        "proposal_id": "src-structured-editor-update",
+                        "summary": "Update editor apply path",
+                        "targets": ["src/impliforge/runtime/editor.py"],
+                        "instructions": ["apply structured update"],
+                        "approval_policy": "src_impliforge_structured_only",
+                        "consumability": "structured_code_editor",
+                        "safe_edit_ready": True,
+                        "edits": [
+                            {
+                                "edit_kind": "replace_block",
+                                "target_symbol": "SafeEditor.apply",
+                                "intent": "update editor apply",
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    orchestrator.apply_safe_edit_phase(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=result(outputs={"normalized_requirements": {}}),
+        planning_result=result(outputs={"plan": {}}),
+        documentation_result=result(
+            outputs={
+                "design_document": "# Design\n",
+                "documentation_bundle": {},
+            }
+        ),
+        implementation_result=implementation_result,
+        test_design_result=result(outputs={"test_plan": {}}),
+        test_execution_result=result(outputs={"test_results": {}}),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "ok",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                }
+            }
+        ),
+        fix_result=None,
+    )
+
+    implementation_task = state.require_task("implementation")
+    structured_results = implementation_task.outputs["structured_code_edit_results"]
+    structured_summary = implementation_task.outputs["structured_code_edit_summary"]
+
+    assert code_editor.requests
+    assert structured_results == [
+        {
+            "proposal_id": "src-structured-editor-update",
+            "relative_path": "src/impliforge/runtime/editor.py",
+            "kind": CodeEditKind.REPLACE_MARKED_BLOCK.value,
+            "approval_policy": "src_impliforge_structured_only",
+            "consumability": "structured_code_editor",
+            "ok": True,
+            "changed": True,
+            "message": "",
+        }
+    ]
+    assert structured_summary == {
+        "request_count": 1,
+        "applied_count": 1,
+        "denied_count": 0,
+        "applied_paths": ["src/impliforge/runtime/editor.py"],
+        "denied_paths": [],
+    }
+    assert (
+        f"artifacts/workflows/{state.workflow_id}/structured-code-edit-results.json"
+        in state.artifacts
+    )
+
+
+def test_edit_phase_records_denied_structured_code_edit_results_in_state_outputs(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+
+    class DeniedCodeEditResult:
+        def __init__(self) -> None:
+            self.ok = False
+            self.changed = False
+            self.message = "approval denied"
+
+    class DeniedCodeEditor:
+        def __init__(self) -> None:
+            self.requests = []
+
+        def apply(self, request):
+            self.requests.append(request)
+            return DeniedCodeEditResult()
+
+    code_editor = DeniedCodeEditor()
+    orchestrator = EditPhaseOrchestrator(
+        safe_editor=DummySafeEditor(),
+        code_editor=code_editor,
+        artifact_writer=writer,
+    )
+    state = build_state()
+
+    implementation_result = result(
+        outputs={
+            "implementation": {
+                "edit_proposals": [
+                    {
+                        "proposal_id": "src-structured-editor-update",
+                        "summary": "Update editor apply path",
+                        "targets": ["src/impliforge/runtime/editor.py"],
+                        "instructions": ["apply structured update"],
+                        "approval_policy": "src_impliforge_structured_only",
+                        "consumability": "structured_code_editor",
+                        "safe_edit_ready": True,
+                        "edits": [
+                            {
+                                "edit_kind": "replace_block",
+                                "target_symbol": "SafeEditor.apply",
+                                "intent": "update editor apply",
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    orchestrator.apply_safe_edit_phase(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=result(outputs={"normalized_requirements": {}}),
+        planning_result=result(outputs={"plan": {}}),
+        documentation_result=result(
+            outputs={
+                "design_document": "# Design\n",
+                "documentation_bundle": {},
+            }
+        ),
+        implementation_result=implementation_result,
+        test_design_result=result(outputs={"test_plan": {}}),
+        test_execution_result=result(outputs={"test_results": {}}),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "ok",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                }
+            }
+        ),
+        fix_result=None,
+    )
+
+    implementation_task = state.require_task("implementation")
+    structured_results = implementation_task.outputs["structured_code_edit_results"]
+    structured_summary = implementation_task.outputs["structured_code_edit_summary"]
+
+    assert code_editor.requests
+    assert structured_results == [
+        {
+            "proposal_id": "src-structured-editor-update",
+            "relative_path": "src/impliforge/runtime/editor.py",
+            "kind": CodeEditKind.REPLACE_MARKED_BLOCK.value,
+            "approval_policy": "src_impliforge_structured_only",
+            "consumability": "structured_code_editor",
+            "ok": False,
+            "changed": False,
+            "message": "approval denied",
+        }
+    ]
+    assert structured_summary == {
+        "request_count": 1,
+        "applied_count": 0,
+        "denied_count": 1,
+        "applied_paths": [],
+        "denied_paths": ["src/impliforge/runtime/editor.py: approval denied"],
+    }
+    assert "src/impliforge/runtime/editor.py" not in state.changed_files
+    assert (
+        f"artifacts/workflows/{state.workflow_id}/structured-code-edit-results.json"
+        in state.artifacts
+    )
+
+
+def test_edit_phase_safe_edit_operations_keep_write_operation_for_docs_and_artifacts(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    orchestrator = EditPhaseOrchestrator(
+        safe_editor=DummySafeEditor(),
+        code_editor=DummyCodeEditor(),
+        artifact_writer=writer,
+    )
+    state = build_state()
+
+    operations = orchestrator.build_safe_edit_operations(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=result(outputs={"normalized_requirements": {}}),
+        planning_result=result(outputs={"plan": {}}),
+        documentation_result=result(
+            outputs={
+                "design_document": "# Design\n",
+                "runbook_document": "# Runbook\n",
+                "documentation_bundle": {},
+            }
+        ),
+        implementation_result=result(outputs={"implementation": {}}),
+        test_design_result=result(
+            outputs={
+                "test_plan": {},
+                "test_plan_document": "# Test Plan\n",
+            }
+        ),
+        test_execution_result=result(
+            outputs={
+                "test_results": {},
+                "test_results_document": "# Test Results\n",
+            }
+        ),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "ok",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                },
+                "review_report": "# Review\n",
+            }
+        ),
+        fix_result=result(
+            outputs={
+                "fix_plan": {},
+                "fix_report": "# Fix\n",
+            }
+        ),
+    )
+
+    assert operations
+    assert all(request.operation is EditOperationKind.WRITE for request in operations)
+
+
+def test_edit_phase_records_safe_edit_results_in_state_outputs(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    safe_editor = DummySafeEditor(
+        results=[
+            DummySafeEditResult(
+                ok=True,
+                changed=True,
+                relative_path="docs/design.md",
+            ),
+            DummySafeEditResult(
+                ok=False,
+                changed=False,
+                relative_path="docs/review-report.md",
+                message="denied",
+            ),
+        ]
+    )
+    orchestrator = EditPhaseOrchestrator(
+        safe_editor=safe_editor,
+        code_editor=DummyCodeEditor(),
+        artifact_writer=writer,
+    )
+    state = build_state()
+
+    orchestrator.apply_safe_edit_phase(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=result(outputs={"normalized_requirements": {}}),
+        planning_result=result(outputs={"plan": {}}),
+        documentation_result=result(
+            outputs={
+                "design_document": "# Design\n",
+                "documentation_bundle": {},
+            }
+        ),
+        implementation_result=result(outputs={"implementation": {}}),
+        test_design_result=result(outputs={"test_plan": {}}),
+        test_execution_result=result(outputs={"test_results": {}}),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "ok",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                }
+            }
+        ),
+        fix_result=None,
+    )
+
+    implementation_task = state.require_task("implementation")
+    safe_edit_results = implementation_task.outputs["safe_edit_results"]
+    safe_edit_summary = implementation_task.outputs["safe_edit_summary"]
+
+    assert safe_editor.requests
+    assert safe_edit_results == [
+        {
+            "proposal_id": "",
+            "relative_path": "docs/design.md",
+            "operation": EditOperationKind.WRITE.value,
+            "approval_policy": "",
+            "consumability": "",
+            "ok": True,
+            "changed": True,
+            "message": "",
+        },
+        {
+            "proposal_id": "",
+            "relative_path": "docs/review-report.md",
+            "operation": EditOperationKind.WRITE.value,
+            "approval_policy": "",
+            "consumability": "",
+            "ok": False,
+            "changed": False,
+            "message": "denied",
+        },
+    ]
+    assert safe_edit_summary == {
+        "request_count": 2,
+        "applied_count": 1,
+        "denied_count": 1,
+        "applied_paths": ["docs/design.md"],
+        "denied_paths": ["docs/review-report.md: denied"],
+    }
+    assert (
+        f"artifacts/workflows/{state.workflow_id}/safe-edit-results.json"
+        in state.artifacts
+    )
+
+
+def test_edit_phase_records_denied_safe_edit_results_in_state_outputs(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    safe_editor = DummySafeEditor(
+        results=[
+            DummySafeEditResult(
+                ok=False,
+                changed=False,
+                relative_path="docs/design.md",
+                message="approval denied",
+            )
+        ]
+    )
+    orchestrator = EditPhaseOrchestrator(
+        safe_editor=safe_editor,
+        code_editor=DummyCodeEditor(),
+        artifact_writer=writer,
+    )
+    state = build_state()
+
+    orchestrator.apply_safe_edit_phase(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=result(outputs={"normalized_requirements": {}}),
+        planning_result=result(outputs={"plan": {}}),
+        documentation_result=result(
+            outputs={
+                "design_document": "# Design\n",
+                "documentation_bundle": {},
+            }
+        ),
+        implementation_result=result(outputs={"implementation": {}}),
+        test_design_result=result(outputs={"test_plan": {}}),
+        test_execution_result=result(outputs={"test_results": {}}),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "ok",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                }
+            }
+        ),
+        fix_result=None,
+    )
+
+    implementation_task = state.require_task("implementation")
+    safe_edit_results = implementation_task.outputs["safe_edit_results"]
+    safe_edit_summary = implementation_task.outputs["safe_edit_summary"]
+
+    assert safe_editor.requests
+    assert safe_edit_results == [
+        {
+            "proposal_id": "",
+            "relative_path": "docs/design.md",
+            "operation": EditOperationKind.WRITE.value,
+            "approval_policy": "",
+            "consumability": "",
+            "ok": False,
+            "changed": False,
+            "message": "approval denied",
+        }
+    ]
+    assert safe_edit_summary == {
+        "request_count": 1,
+        "applied_count": 0,
+        "denied_count": 1,
+        "applied_paths": [],
+        "denied_paths": ["docs/design.md: approval denied"],
+    }
+    assert "docs/design.md" not in state.changed_files
+    assert (
+        f"artifacts/workflows/{state.workflow_id}/safe-edit-results.json"
+        in state.artifacts
+    )

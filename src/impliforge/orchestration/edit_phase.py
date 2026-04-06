@@ -77,12 +77,43 @@ class EditPhaseOrchestrator:
         results = self.safe_editor.apply_many(operations)
         applied_paths: list[str] = []
         denied_paths: list[str] = []
+        safe_edit_results: list[dict[str, Any]] = []
 
-        for result in results:
+        for request, result in zip(operations, results, strict=False):
+            safe_edit_results.append(
+                {
+                    "proposal_id": request.proposal_id,
+                    "relative_path": result.relative_path,
+                    "operation": request.operation.value,
+                    "approval_policy": request.approval_policy,
+                    "consumability": request.consumability,
+                    "ok": result.ok,
+                    "changed": result.changed,
+                    "message": result.message,
+                }
+            )
             if result.ok and result.changed:
                 self._record_path(state, result.relative_path, applied_paths)
             elif not result.ok:
                 denied_paths.append(f"{result.relative_path}: {result.message}")
+
+        if safe_edit_results:
+            state.merge_task_outputs(
+                "implementation",
+                {
+                    "safe_edit_results": safe_edit_results,
+                    "safe_edit_summary": {
+                        "request_count": len(safe_edit_results),
+                        "applied_count": len(applied_paths),
+                        "denied_count": len(denied_paths),
+                        "applied_paths": list(applied_paths),
+                        "denied_paths": list(denied_paths),
+                    },
+                },
+            )
+            state.add_artifact(
+                f"artifacts/workflows/{state.workflow_id}/safe-edit-results.json"
+            )
 
         structured_edit_paths, structured_denied_paths = (
             self.apply_structured_code_edit_phase(
@@ -272,8 +303,21 @@ class EditPhaseOrchestrator:
             if isinstance(fix_plan, dict):
                 requests.extend(self.build_structured_fix_code_edit_requests(fix_plan))
 
+        execution_results: list[dict[str, Any]] = []
         for request in requests:
             result = self.code_editor.apply(request)
+            execution_results.append(
+                {
+                    "proposal_id": request.proposal_id,
+                    "relative_path": request.relative_path,
+                    "kind": request.kind.value,
+                    "approval_policy": request.approval_policy,
+                    "consumability": request.consumability,
+                    "ok": result.ok,
+                    "changed": result.changed,
+                    "message": getattr(result, "message", ""),
+                }
+            )
             if (
                 result.ok
                 and result.changed
@@ -285,6 +329,24 @@ class EditPhaseOrchestrator:
                     getattr(result, "message", "") or "structured code edit denied"
                 )
                 denied_paths.append(f"{request.relative_path}: {message}")
+
+        if execution_results:
+            state.merge_task_outputs(
+                "implementation",
+                {
+                    "structured_code_edit_results": execution_results,
+                    "structured_code_edit_summary": {
+                        "request_count": len(execution_results),
+                        "applied_count": len(applied_paths),
+                        "denied_count": len(denied_paths),
+                        "applied_paths": list(applied_paths),
+                        "denied_paths": list(denied_paths),
+                    },
+                },
+            )
+            state.add_artifact(
+                f"artifacts/workflows/{state.workflow_id}/structured-code-edit-results.json"
+            )
 
         if applied_paths:
             state.add_note(

@@ -6,7 +6,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-main_module = importlib.import_module("impliforge.main")
 from impliforge.agents.base import AgentResult, AgentTask
 from impliforge.main import SkeletonOrchestrator, _run_cli, build_parser, main
 from impliforge.models.routing import RoutingMode
@@ -22,6 +21,8 @@ from impliforge.runtime.copilot_client import (
     CopilotTaskType,
     CopilotUsage,
 )
+
+main_module = importlib.import_module("impliforge.main")
 
 
 class DummyRoutingDecision:
@@ -2486,6 +2487,115 @@ def test_run_merges_rerun_outputs_from_task_state_for_final_artifacts(
     }
 
 
+def test_run_includes_safe_and_structured_edit_summaries_in_final_artifact_contract(
+    tmp_path: Path,
+) -> None:
+    orchestrator = make_orchestrator(tmp_path)
+    orchestrator.requirements_agent = DummyAgent(
+        "requirements",
+        make_result(
+            summary="requirements done",
+            outputs={"normalized_requirements": {"objective": "Build workflow"}},
+        ),
+    )
+    orchestrator.planning_agent = DummyAgent(
+        "planner",
+        make_result(summary="planning done", outputs={"plan": {"phases": ["plan"]}}),
+    )
+    orchestrator.documentation_agent = DummyAgent(
+        "documentation",
+        make_result(
+            summary="documentation done",
+            outputs={"documentation_bundle": {"design_doc": "doc text"}},
+        ),
+    )
+    orchestrator.implementation_agent = DummyAgent(
+        "implementation",
+        make_result(
+            summary="implementation done",
+            outputs={"implementation": {"changes": ["src/impliforge/main.py"]}},
+        ),
+    )
+    orchestrator.test_design_agent = DummyAgent(
+        "test-design",
+        make_result(
+            summary="test design done",
+            outputs={
+                "test_plan": {"cases": ["parser", "orchestrator"]},
+                "test_plan_document": "# test plan",
+            },
+        ),
+    )
+    orchestrator.test_execution_agent = DummyAgent(
+        "test-execution",
+        make_result(
+            summary="test execution done",
+            outputs={
+                "test_results": {"status": "passed"},
+                "test_results_document": "# test results",
+            },
+        ),
+    )
+    orchestrator.review_agent = DummyAgent(
+        "review",
+        make_result(
+            summary="review done",
+            outputs={
+                "review": {"fix_loop_required": False},
+                "review_report": "# review report",
+            },
+        ),
+    )
+    orchestrator.fixer_agent = DummyAgent(
+        "fixer",
+        make_result(summary="fix done", outputs={"implementation": {"changes": []}}),
+    )
+
+    safe_edit_summary = {
+        "request_count": 2,
+        "applied_count": 1,
+        "denied_count": 1,
+        "applied_paths": ["docs/design.md"],
+        "denied_paths": ["docs/review-report.md: denied"],
+    }
+    structured_code_edit_summary = {
+        "request_count": 1,
+        "applied_count": 1,
+        "denied_count": 0,
+        "applied_paths": ["src/impliforge/runtime/editor.py"],
+        "denied_paths": [],
+    }
+
+    original_apply_safe_edit_phase = orchestrator.edit_phase.apply_safe_edit_phase
+
+    def fake_apply_safe_edit_phase(**kwargs: Any) -> None:
+        original_apply_safe_edit_phase(**kwargs)
+        state_arg = kwargs["state"]
+        implementation_outputs = state_arg.require_task("implementation").outputs
+        implementation_outputs["safe_edit_summary"] = safe_edit_summary
+        implementation_outputs["structured_code_edit_summary"] = (
+            structured_code_edit_summary
+        )
+
+    orchestrator.edit_phase.apply_safe_edit_phase = fake_apply_safe_edit_phase
+
+    asyncio.run(
+        orchestrator.run(
+            "Build a multi-agent workflow",
+            token_usage_ratio=0.61,
+        )
+    )
+
+    workflow_call = orchestrator.artifact_writer.workflow_calls[0]
+    implementation_result = workflow_call["implementation_result"]
+
+    assert implementation_result.outputs["safe_edit_summary"] == safe_edit_summary
+    assert (
+        implementation_result.outputs["structured_code_edit_summary"]
+        == structured_code_edit_summary
+    )
+
+
 def test_run_fix_loop_records_escalation_note_when_rerun_review_fails(
     tmp_path: Path,
 ) -> None:
@@ -3295,6 +3405,18 @@ def test_run_cli_omits_rotation_reason_when_empty(
     assert f"requirement_file: {requirement_file}" in output
     assert "rotate_session: False" in output
     assert "rotation_reason:" not in output
+    assert "safe_edit_summary:" in output
+    assert "  - request_count: 0" in output
+    assert "  - applied_count: 0" in output
+    assert "  - denied_count: 0" in output
+    assert "  - applied_paths: none" in output
+    assert "  - denied_paths: none" in output
+    assert "structured_code_edit_summary:" in output
+    assert "  - request_count: 0" in output
+    assert "  - applied_count: 0" in output
+    assert "  - denied_count: 0" in output
+    assert "  - applied_paths: none" in output
+    assert "  - denied_paths: none" in output
 
 
 def test_run_cli_e2e_style_flow_surfaces_multi_phase_artifacts_and_summary(
@@ -3320,6 +3442,24 @@ def test_run_cli_e2e_style_flow_surfaces_multi_phase_artifacts_and_summary(
     state.add_artifact("docs/fix-report.md")
     state.add_artifact("artifacts/summaries/wf-test-main/run-summary.json")
     state.add_artifact("docs/final-summary.md")
+    state.require_task("implementation").outputs.update(
+        {
+            "safe_edit_summary": {
+                "request_count": 2,
+                "applied_count": 1,
+                "denied_count": 1,
+                "applied_paths": ["docs/design.md"],
+                "denied_paths": ["docs/review-report.md: denied"],
+            },
+            "structured_code_edit_summary": {
+                "request_count": 1,
+                "applied_count": 1,
+                "denied_count": 0,
+                "applied_paths": ["src/impliforge/runtime/editor.py"],
+                "denied_paths": [],
+            },
+        }
+    )
 
     created: list[Any] = []
 
@@ -3415,6 +3555,18 @@ def test_run_cli_e2e_style_flow_surfaces_multi_phase_artifacts_and_summary(
     assert "  - docs/fix-report.md" in captured
     assert "  - artifacts/summaries/wf-test-main/run-summary.json" in captured
     assert "  - docs/final-summary.md" in captured
+    assert "safe_edit_summary:" in captured
+    assert "  - request_count: 2" in captured
+    assert "  - applied_count: 1" in captured
+    assert "  - denied_count: 1" in captured
+    assert "  - applied_paths: docs/design.md" in captured
+    assert "  - denied_paths: docs/review-report.md: denied" in captured
+    assert "structured_code_edit_summary:" in captured
+    assert "  - request_count: 1" in captured
+    assert "  - applied_count: 1" in captured
+    assert "  - denied_count: 0" in captured
+    assert "  - applied_paths: src/impliforge/runtime/editor.py" in captured
+    assert "  - denied_paths: none" in captured
 
 
 def test_run_cli_e2e_style_flow_handles_long_requirement_input(
@@ -3435,6 +3587,24 @@ def test_run_cli_e2e_style_flow_handles_long_requirement_input(
     state.update_task_status("review", TaskStatus.COMPLETED)
     state.add_artifact("docs/design.md")
     state.add_artifact("artifacts/summaries/wf-test-main/run-summary.json")
+    state.require_task("implementation").outputs.update(
+        {
+            "safe_edit_summary": {
+                "request_count": 1,
+                "applied_count": 1,
+                "denied_count": 0,
+                "applied_paths": ["docs/design.md"],
+                "denied_paths": [],
+            },
+            "structured_code_edit_summary": {
+                "request_count": 1,
+                "applied_count": 0,
+                "denied_count": 1,
+                "applied_paths": [],
+                "denied_paths": ["src/impliforge/runtime/editor.py: approval denied"],
+            },
+        }
+    )
 
     created: list[Any] = []
 
@@ -3510,6 +3680,21 @@ def test_run_cli_e2e_style_flow_handles_long_requirement_input(
     assert "rotation_reason: threshold exceeded" in captured
     assert "  - docs/design.md" in captured
     assert "  - artifacts/summaries/wf-test-main/run-summary.json" in captured
+    assert "safe_edit_summary:" in captured
+    assert "  - request_count: 1" in captured
+    assert "  - applied_count: 1" in captured
+    assert "  - denied_count: 0" in captured
+    assert "  - applied_paths: docs/design.md" in captured
+    assert "  - denied_paths: none" in captured
+    assert "structured_code_edit_summary:" in captured
+    assert "  - request_count: 1" in captured
+    assert "  - applied_count: 0" in captured
+    assert "  - denied_count: 1" in captured
+    assert "  - applied_paths: none" in captured
+    assert (
+        "  - denied_paths: src/impliforge/runtime/editor.py: approval denied"
+        in captured
+    )
 
 
 def test_main_parses_args_and_runs_cli(monkeypatch: Any) -> None:
