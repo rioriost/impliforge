@@ -288,7 +288,7 @@ class WorkflowArtifactWriter:
             ]
         )
 
-        next_actions = finalization_next_actions = (
+        next_actions = (
             state.require_task("finalization").outputs.get("next_actions", [])
             if state.get_task("finalization") is not None
             else []
