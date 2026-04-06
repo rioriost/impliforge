@@ -86,8 +86,8 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 model: gpt-5.4
 task_type: test_design
 reason: sdk_error:JsonRpcError
-session_id: sess-20260406011202
-workflow_id: wf-20260406011202
+session_id: sess-20260406011449
+workflow_id: wf-20260406011449
 persistent_context_keys: documentation_bundle, implementation, normalized_requirements, phase, plan, requirement, workflow_id
 prompt_preview:
 {'objective': 'GitHub Copilot SDKを用いたマルチエージェント環境を構築する', 'summary': '要件をマルチエージェント実装向けに構造化した。', 'constraints': ['Use GitHub Copilot SDK as the orchestration foundation', 'Default model
