@@ -13,7 +13,9 @@ from devagents.runtime.editor import (
     ApprovalResult,
     EditOperationKind,
     EditRequest,
+    EditRiskFlag,
     approve_docs_and_artifacts_only,
+    has_edit_risk_flag,
 )
 
 
@@ -84,19 +86,44 @@ class RuntimeSupport:
             if request.operation == EditOperationKind.DELETE:
                 return ApprovalResult(
                     decision=ApprovalDecision.DENIED,
-                    reason="delete operations under src/devagents are not allowed",
+                    reason=(
+                        "delete operations under src/devagents require explicit human approval"
+                    ),
                 )
 
             if request.operation in {
                 EditOperationKind.WRITE,
                 EditOperationKind.APPEND,
             }:
+                if self._requires_human_escalation(request):
+                    return ApprovalResult(
+                        decision=ApprovalDecision.DENIED,
+                        reason=(
+                            "dependency additions, environment changes, and security-impacting src/devagents edits require explicit human approval"
+                        ),
+                    )
                 return ApprovalResult(
                     decision=ApprovalDecision.APPROVED,
-                    reason="src/devagents allowlist permits controlled edits",
+                    reason=(
+                        "src/devagents allowlist permits controlled write/append edits"
+                    ),
                 )
 
         return ApprovalResult(
             decision=ApprovalDecision.DENIED,
-            reason="target is outside configured approval scope",
+            reason=(
+                "target is outside the allowed docs/artifacts/src/devagents approval scope"
+            ),
+        )
+
+    def _requires_human_escalation(self, request: EditRequest) -> bool:
+        """Detect risky src edit intents that must not be auto-approved."""
+        return has_edit_risk_flag(
+            request,
+            EditRiskFlag.DEPENDENCY_CHANGE,
+            EditRiskFlag.ENVIRONMENT_CHANGE,
+            EditRiskFlag.SECURITY_IMPACT,
+            EditRiskFlag.SECRET_MATERIAL,
+            EditRiskFlag.DESTRUCTIVE,
+            EditRiskFlag.BROAD_OVERWRITE,
         )

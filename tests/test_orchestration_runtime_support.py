@@ -9,7 +9,12 @@ from orchestration_test_helpers import (
 )
 
 from devagents.orchestration.runtime_support import RuntimeSupport
-from devagents.runtime.editor import ApprovalDecision, EditOperationKind, EditRequest
+from devagents.runtime.editor import (
+    ApprovalDecision,
+    EditOperationKind,
+    EditRequest,
+    EditRiskFlag,
+)
 
 
 def test_runtime_support_approval_hook_applies_expected_policy(
@@ -41,7 +46,10 @@ def test_runtime_support_approval_hook_applies_expected_policy(
         tmp_path / "src" / "devagents" / "main.py",
     )
     assert src_write_result.decision == ApprovalDecision.APPROVED
-    assert src_write_result.reason == "src/devagents allowlist permits controlled edits"
+    assert (
+        src_write_result.reason
+        == "src/devagents allowlist permits controlled write/append edits"
+    )
 
     src_delete_request = EditRequest(
         relative_path="src/devagents/main.py",
@@ -54,7 +62,7 @@ def test_runtime_support_approval_hook_applies_expected_policy(
     assert src_delete_result.decision == ApprovalDecision.DENIED
     assert (
         src_delete_result.reason
-        == "delete operations under src/devagents are not allowed"
+        == "delete operations under src/devagents require explicit human approval"
     )
 
     outside_request = EditRequest(
@@ -67,7 +75,94 @@ def test_runtime_support_approval_hook_applies_expected_policy(
         tmp_path / "README.md",
     )
     assert outside_result.decision == ApprovalDecision.DENIED
-    assert outside_result.reason == "target is outside configured approval scope"
+    assert (
+        outside_result.reason
+        == "target is outside the allowed docs/artifacts/src/devagents approval scope"
+    )
+
+
+def test_runtime_support_approval_hook_denies_dependency_addition_intent(
+    tmp_path: Path,
+) -> None:
+    runtime_support = RuntimeSupport(
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+
+    request = EditRequest(
+        relative_path="src/devagents/main.py",
+        operation=EditOperationKind.WRITE,
+        content="print('ok')\n",
+        reason="Add dependency wiring for new package install flow",
+        risk_flags=(EditRiskFlag.DEPENDENCY_CHANGE,),
+    )
+
+    result = runtime_support.approval_hook(
+        request,
+        tmp_path / "src" / "devagents" / "main.py",
+    )
+
+    assert result.decision == ApprovalDecision.DENIED
+    assert (
+        result.reason
+        == "dependency additions, environment changes, and security-impacting src/devagents edits require explicit human approval"
+    )
+
+
+def test_runtime_support_approval_hook_denies_environment_change_intent(
+    tmp_path: Path,
+) -> None:
+    runtime_support = RuntimeSupport(
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+
+    request = EditRequest(
+        relative_path="src/devagents/main.py",
+        operation=EditOperationKind.APPEND,
+        content="print('ok')\n",
+        reason="Update environment bootstrap and venv handling",
+        risk_flags=(EditRiskFlag.ENVIRONMENT_CHANGE,),
+    )
+
+    result = runtime_support.approval_hook(
+        request,
+        tmp_path / "src" / "devagents" / "main.py",
+    )
+
+    assert result.decision == ApprovalDecision.DENIED
+    assert (
+        result.reason
+        == "dependency additions, environment changes, and security-impacting src/devagents edits require explicit human approval"
+    )
+
+
+def test_runtime_support_approval_hook_denies_security_impacting_intent(
+    tmp_path: Path,
+) -> None:
+    runtime_support = RuntimeSupport(
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+
+    request = EditRequest(
+        relative_path="src/devagents/main.py",
+        operation=EditOperationKind.WRITE,
+        content="print('ok')\n",
+        reason="Adjust token permission checks for auth flow",
+        risk_flags=(EditRiskFlag.SECURITY_IMPACT,),
+    )
+
+    result = runtime_support.approval_hook(
+        request,
+        tmp_path / "src" / "devagents" / "main.py",
+    )
+
+    assert result.decision == ApprovalDecision.DENIED
+    assert (
+        result.reason
+        == "dependency additions, environment changes, and security-impacting src/devagents edits require explicit human approval"
+    )
 
 
 def test_runtime_support_rotates_session_and_records_snapshot(

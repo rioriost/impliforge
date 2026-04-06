@@ -18,6 +18,7 @@ from devagents.runtime.code_editing import (
     CodeEditingPolicy,
     CodeEditKind,
     CodeEditRequest,
+    CodeEditRiskFlag,
     StructuredCodeEditor,
     approve_src_devagents_only,
 )
@@ -356,6 +357,95 @@ def test_approve_src_devagents_only_allows_python_and_denies_outside_scope() -> 
     assert "outside src/devagents approval scope" in denied.reason
 
 
+def test_approve_src_devagents_only_denies_broad_marked_block_rewrite() -> None:
+    denied = approve_src_devagents_only(
+        CodeEditRequest(
+            relative_path="src/devagents/runtime/sample.py",
+            kind=CodeEditKind.REPLACE_MARKED_BLOCK,
+            reason="large rewrite",
+            begin_marker="# BEGIN STRUCTURED EDIT: sample",
+            end_marker="# END STRUCTURED EDIT: sample",
+            content=("line\n" * 121),
+        ),
+        Path("/tmp/src/devagents/runtime/sample.py"),
+    )
+
+    assert denied.decision is CodeApprovalDecision.DENIED
+    assert (
+        denied.reason == "broad marked-block rewrites require explicit human approval"
+    )
+
+
+def test_approve_src_devagents_only_allows_small_marked_block_rewrite() -> None:
+    approved = approve_src_devagents_only(
+        CodeEditRequest(
+            relative_path="src/devagents/runtime/sample.py",
+            kind=CodeEditKind.REPLACE_MARKED_BLOCK,
+            reason="small rewrite",
+            begin_marker="# BEGIN STRUCTURED EDIT: sample",
+            end_marker="# END STRUCTURED EDIT: sample",
+            content="print('ok')\n",
+        ),
+        Path("/tmp/src/devagents/runtime/sample.py"),
+    )
+
+    assert approved.decision is CodeApprovalDecision.APPROVED
+    assert approved.reason == "approved by src/devagents structured editing policy"
+
+
+def test_approve_src_devagents_only_denies_secret_like_content() -> None:
+    denied = approve_src_devagents_only(
+        CodeEditRequest(
+            relative_path="src/devagents/runtime/sample.py",
+            kind=CodeEditKind.INSERT_AFTER_MARKER,
+            reason="introduce token",
+            marker="def sample() -> None:\n",
+            content='    api_key = "super-secret-value"\n',
+        ),
+        Path("/tmp/src/devagents/runtime/sample.py"),
+    )
+
+    assert denied.decision is CodeApprovalDecision.DENIED
+    assert (
+        denied.reason
+        == "secret-like content detected; explicit human approval is required"
+    )
+
+
+def test_approve_src_devagents_only_denies_structured_dependency_risk_flag() -> None:
+    denied = approve_src_devagents_only(
+        CodeEditRequest(
+            relative_path="src/devagents/runtime/sample.py",
+            kind=CodeEditKind.INSERT_AFTER_MARKER,
+            reason="small update",
+            risk_flags=(CodeEditRiskFlag.DEPENDENCY_CHANGE,),
+            marker="def sample() -> None:\n",
+            content="    return None\n",
+        ),
+        Path("/tmp/src/devagents/runtime/sample.py"),
+    )
+
+    assert denied.decision is CodeApprovalDecision.DENIED
+    assert denied.reason == "structured risk flags require explicit human approval"
+
+
+def test_approve_src_devagents_only_denies_structured_security_risk_flag() -> None:
+    denied = approve_src_devagents_only(
+        CodeEditRequest(
+            relative_path="src/devagents/runtime/sample.py",
+            kind=CodeEditKind.INSERT_AFTER_MARKER,
+            reason="small update",
+            risk_flags=(CodeEditRiskFlag.SECURITY_IMPACT,),
+            marker="def sample() -> None:\n",
+            content="    return None\n",
+        ),
+        Path("/tmp/src/devagents/runtime/sample.py"),
+    )
+
+    assert denied.decision is CodeApprovalDecision.DENIED
+    assert denied.reason == "structured risk flags require explicit human approval"
+
+
 def test_insert_after_and_before_marker_require_inputs_and_marker_presence(
     tmp_path: Path,
 ) -> None:
@@ -661,6 +751,8 @@ def test_workflow_state_helpers_cover_finalize_summary_and_retries() -> None:
 
     assert len(build_default_tasks()) == 8
     assert state.can_finalize() is False
+    assert state.execution_trace[0].event_type == "workflow_initialized"
+    assert state.execution_trace[0].details["task_count"] == 8
 
     state.set_phase(WorkflowPhase.PLANNED)
     state.add_note("note-1")
@@ -672,6 +764,14 @@ def test_workflow_state_helpers_cover_finalize_summary_and_retries() -> None:
     state.resolve_open_question("question-1")
     assert state.increment_retry("review") == 1
     assert state.increment_retry("review") == 2
+    state.set_session("session-1", parent_session_id="session-0")
+    state.record_event(
+        "manual_trace",
+        task_id="planning",
+        status="observed",
+        summary="manual trace event",
+        details={"source": "test"},
+    )
 
     state.update_task_status(
         "requirements_analysis",
@@ -694,8 +794,33 @@ def test_workflow_state_helpers_cover_finalize_summary_and_retries() -> None:
     assert summary["task_counts"]["completed"] == 8
     assert summary["task_counts"]["failed"] == 0
     assert summary["risks"] == ["risk-1"]
+    assert summary["execution_trace_count"] == len(state.execution_trace)
     assert as_dict["retry_counters"]["review"] == 2
     assert as_dict["tasks"][0]["outputs"]["normalized"] is True
+    assert as_dict["execution_trace"][0]["event_type"] == "workflow_initialized"
+    assert as_dict["execution_trace"][-1]["event_type"] == "manual_trace"
+
+    phase_events = [
+        event for event in state.execution_trace if event.event_type == "phase_changed"
+    ]
+    retry_events = [
+        event
+        for event in state.execution_trace
+        if event.event_type == "retry_incremented"
+    ]
+    session_events = [
+        event for event in state.execution_trace if event.event_type == "session_bound"
+    ]
+
+    assert len(phase_events) == 1
+    assert phase_events[0].details["previous_phase"] == "initialized"
+    assert len(retry_events) == 2
+    assert retry_events[-1].details["retry_count"] == 2
+    assert len(session_events) == 1
+    assert session_events[0].details == {
+        "session_id": "session-1",
+        "parent_session_id": "session-0",
+    }
 
 
 def test_workflow_state_duplicate_and_missing_task_paths() -> None:
@@ -744,4 +869,61 @@ def test_workflow_state_failed_and_blocked_tasks_prevent_finalization() -> None:
 
     state.update_task_status("review", TaskStatus.COMPLETED)
     state.update_task_status("finalization", TaskStatus.BLOCKED, note="waiting")
+    assert state.can_finalize() is False
+
+
+def test_workflow_state_open_questions_prevent_finalization_until_resolved() -> None:
+    state = create_workflow_state(
+        workflow_id="wf-runtime-004",
+        requirement="Exercise open question finalize guard",
+        model="gpt-5.4",
+    )
+
+    for task_id in [
+        "requirements_analysis",
+        "planning",
+        "documentation",
+        "implementation",
+        "test_design",
+        "test_execution",
+        "review",
+        "finalization",
+    ]:
+        state.update_task_status(task_id, TaskStatus.COMPLETED)
+
+    assert state.can_finalize() is True
+
+    state.add_open_question("Need operator confirmation")
+    assert state.can_finalize() is False
+
+    state.resolve_open_question("Need operator confirmation")
+    assert state.can_finalize() is True
+
+
+def test_workflow_state_pending_and_in_progress_tasks_prevent_finalization() -> None:
+    state = create_workflow_state(
+        workflow_id="wf-runtime-005",
+        requirement="Exercise non-terminal task finalize guards",
+        model="gpt-5.4",
+    )
+
+    for task_id in [
+        "requirements_analysis",
+        "planning",
+        "documentation",
+        "implementation",
+        "test_design",
+        "test_execution",
+        "review",
+        "finalization",
+    ]:
+        state.update_task_status(task_id, TaskStatus.COMPLETED)
+
+    assert state.can_finalize() is True
+
+    state.update_task_status("finalization", TaskStatus.PENDING)
+    assert state.can_finalize() is False
+
+    state.update_task_status("finalization", TaskStatus.COMPLETED)
+    state.update_task_status("implementation", TaskStatus.IN_PROGRESS)
     assert state.can_finalize() is False

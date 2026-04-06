@@ -11,6 +11,7 @@ from devagents.orchestration.workflow import WorkflowState
 from devagents.runtime.code_editing import (
     CodeEditKind,
     CodeEditRequest,
+    CodeEditRiskFlag,
     StructuredCodeEditor,
 )
 from devagents.runtime.editor import EditOperationKind, EditRequest, SafeEditor
@@ -72,13 +73,16 @@ class EditPhaseOrchestrator:
             elif not result.ok:
                 denied_paths.append(f"{result.relative_path}: {result.message}")
 
-        structured_edit_paths = self.apply_structured_code_edit_phase(
-            state=state,
-            implementation_result=implementation_result,
-            fix_result=fix_result,
+        structured_edit_paths, structured_denied_paths = (
+            self.apply_structured_code_edit_phase(
+                state=state,
+                implementation_result=implementation_result,
+                fix_result=fix_result,
+            )
         )
         for path in structured_edit_paths:
             self._record_path(state, path, applied_paths)
+        denied_paths.extend(structured_denied_paths)
 
         if applied_paths:
             state.add_note(
@@ -242,13 +246,14 @@ class EditPhaseOrchestrator:
         state: WorkflowState,
         implementation_result: AgentResult,
         fix_result: AgentResult | None,
-    ) -> list[str]:
+    ) -> tuple[list[str], list[str]]:
         """Apply structured source edits under `src/devagents/`."""
         implementation = implementation_result.outputs.get("implementation", {})
         if not isinstance(implementation, dict):
-            return []
+            return [], []
 
         applied_paths: list[str] = []
+        denied_paths: list[str] = []
         requests = self.build_structured_code_edit_requests(implementation)
 
         if fix_result is not None:
@@ -264,13 +269,18 @@ class EditPhaseOrchestrator:
                 and request.relative_path not in applied_paths
             ):
                 applied_paths.append(request.relative_path)
+            elif not result.ok:
+                message = (
+                    getattr(result, "message", "") or "structured code edit denied"
+                )
+                denied_paths.append(f"{request.relative_path}: {message}")
 
         if applied_paths:
             state.add_note(
                 "structured code edit phase で src/devagents 配下の更新を適用した。"
             )
 
-        return applied_paths
+        return applied_paths, denied_paths
 
     def build_structured_code_edit_requests(
         self,
@@ -324,6 +334,7 @@ class EditPhaseOrchestrator:
                 proposal.get("summary", "Apply structured code edit proposal")
             ).strip()
         )
+        risk_flags = self._extract_code_edit_risk_flags(proposal)
 
         requests: list[CodeEditRequest] = []
         for target in targets:
@@ -336,6 +347,7 @@ class EditPhaseOrchestrator:
                     target_path=target_path,
                     edit=edit,
                     reason=reason,
+                    risk_flags=risk_flags,
                 )
                 if request is not None:
                     requests.append(request)
@@ -348,6 +360,7 @@ class EditPhaseOrchestrator:
         target_path: str,
         edit: Any,
         reason: str,
+        risk_flags: tuple[CodeEditRiskFlag, ...] = (),
     ) -> CodeEditRequest | None:
         """Convert a single edit payload into a structured code edit request."""
         if not isinstance(edit, dict):
@@ -373,10 +386,37 @@ class EditPhaseOrchestrator:
             relative_path=target_path,
             kind=CodeEditKind.REPLACE_MARKED_BLOCK,
             reason=request_reason,
+            risk_flags=risk_flags,
             begin_marker=begin_marker,
             end_marker=end_marker,
             content=content,
         )
+
+    def _extract_code_edit_risk_flags(
+        self,
+        proposal: Any,
+    ) -> tuple[CodeEditRiskFlag, ...]:
+        """Extract structured risk flags from a proposal payload."""
+        if not isinstance(proposal, dict):
+            return ()
+
+        raw_flags = proposal.get("risk_flags", [])
+        if not isinstance(raw_flags, list):
+            return ()
+
+        normalized_flags: list[CodeEditRiskFlag] = []
+        for item in raw_flags:
+            value = str(item).strip()
+            if not value:
+                continue
+            try:
+                flag = CodeEditRiskFlag(value)
+            except ValueError:
+                continue
+            if flag not in normalized_flags:
+                normalized_flags.append(flag)
+
+        return tuple(normalized_flags)
 
     def build_structured_replacement_content(
         self,

@@ -18,6 +18,7 @@ This runtime is intentionally conservative. It is suitable for:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -27,6 +28,14 @@ from typing import Callable
 DEFAULT_ALLOWED_ROOTS = ("docs", "artifacts")
 DEFAULT_PROTECTED_ROOTS = (".git", ".venv")
 DEFAULT_SRC_ALLOWED_PREFIXES = ("src/devagents",)
+SECRET_DETECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token)\s*=\s*['\"][^'\"]+['\"]"
+    ),
+    re.compile(r"(?i)(password|passwd|pwd)\s*=\s*['\"][^'\"]+['\"]"),
+    re.compile(r"(?i)-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
+    re.compile(r"(?i)ghp_[A-Za-z0-9]{20,}"),
+)
 
 
 class EditOperationKind(StrEnum):
@@ -45,6 +54,17 @@ class ApprovalDecision(StrEnum):
     DENIED = "denied"
 
 
+class EditRiskFlag(StrEnum):
+    """Structured risk flags carried with edit requests."""
+
+    DESTRUCTIVE = "destructive"
+    BROAD_OVERWRITE = "broad_overwrite"
+    DEPENDENCY_CHANGE = "dependency_change"
+    ENVIRONMENT_CHANGE = "environment_change"
+    SECURITY_IMPACT = "security_impact"
+    SECRET_MATERIAL = "secret_material"
+
+
 @dataclass(slots=True)
 class EditRequest:
     """A single requested file-system change."""
@@ -53,6 +73,7 @@ class EditRequest:
     operation: EditOperationKind = EditOperationKind.WRITE
     content: str | None = None
     reason: str = ""
+    risk_flags: tuple[EditRiskFlag, ...] = ()
     create_parents: bool = True
     overwrite: bool = True
 
@@ -270,7 +291,7 @@ class SafeEditor:
             absolute_path=absolute_path,
             dry_run=self.dry_run,
             message=f"Unsupported operation: {request.operation.value}",
-        )# END STRUCTURED EDIT: SafeEditor.apply
+        )  # END STRUCTURED EDIT: SafeEditor.apply
 
     def apply_many(self, requests: list[EditRequest]) -> list[EditResult]:
         """Apply multiple edit requests in order."""
@@ -533,6 +554,25 @@ class SafeEditor:
         return absolute_path
 
 
+def _find_secret_like_content(request: EditRequest) -> str | None:
+    candidates = [request.content]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        for pattern in SECRET_DETECTION_PATTERNS:
+            if pattern.search(candidate):
+                return (
+                    "secret-like content detected; explicit human approval is required"
+                )
+    return None
+
+
+def has_edit_risk_flag(request: EditRequest, *flags: EditRiskFlag) -> bool:
+    """Return whether the request carries any of the given structured risk flags."""
+    request_flags = set(request.risk_flags)
+    return any(flag in request_flags for flag in flags)
+
+
 def approve_docs_and_artifacts_only(
     request: EditRequest, absolute_path: Path
 ) -> ApprovalResult:
@@ -552,6 +592,17 @@ def approve_docs_and_artifacts_only(
         )
 
     if relative_path.startswith("docs/") or relative_path.startswith("artifacts/"):
+        secret_detection_reason = _find_secret_like_content(request)
+        if secret_detection_reason is not None or has_edit_risk_flag(
+            request, EditRiskFlag.SECRET_MATERIAL
+        ):
+            return ApprovalResult(
+                decision=ApprovalDecision.DENIED,
+                reason=(
+                    secret_detection_reason
+                    or "secret-like content detected; explicit human approval is required"
+                ),
+            )
         return ApprovalResult(
             decision=ApprovalDecision.APPROVED,
             reason="allowed by conservative docs/artifacts policy",
@@ -583,12 +634,29 @@ def approve_docs_artifacts_and_src_devagents(
         )
 
     if relative_path.startswith("docs/") or relative_path.startswith("artifacts/"):
+        secret_detection_reason = _find_secret_like_content(request)
+        if secret_detection_reason is not None:
+            return ApprovalResult(
+                decision=ApprovalDecision.DENIED,
+                reason=secret_detection_reason,
+            )
         return ApprovalResult(
             decision=ApprovalDecision.APPROVED,
             reason="allowed by docs/artifacts policy",
         )
 
     if relative_path == "src/devagents" or relative_path.startswith("src/devagents/"):
+        secret_detection_reason = _find_secret_like_content(request)
+        if secret_detection_reason is not None or has_edit_risk_flag(
+            request, EditRiskFlag.SECRET_MATERIAL
+        ):
+            return ApprovalResult(
+                decision=ApprovalDecision.DENIED,
+                reason=(
+                    secret_detection_reason
+                    or "secret-like content detected; explicit human approval is required"
+                ),
+            )
         return ApprovalResult(
             decision=ApprovalDecision.APPROVED,
             reason="allowed by src/devagents scoped approval policy",

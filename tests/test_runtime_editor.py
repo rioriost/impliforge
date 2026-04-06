@@ -11,6 +11,7 @@ from devagents.runtime.editor import (
     EditorError,
     EditorPolicy,
     EditRequest,
+    EditRiskFlag,
     SafeEditor,
     approve_docs_and_artifacts_only,
     approve_docs_artifacts_and_src_devagents,
@@ -432,4 +433,79 @@ def test_scoped_src_approval_hook_allows_src_devagents_but_denies_delete() -> No
     assert src_result.reason == "allowed by src/devagents scoped approval policy"
     assert docs_result.decision == ApprovalDecision.APPROVED
     assert delete_result.decision == ApprovalDecision.DENIED
+    assert delete_result.reason == "delete operations require explicit custom approval"
     assert outside_result.decision == ApprovalDecision.DENIED
+    assert (
+        outside_result.reason
+        == "target is outside approved src/devagents/docs/artifacts scope"
+    )
+
+
+def test_conservative_approval_hook_denies_secret_like_content() -> None:
+    result = approve_docs_and_artifacts_only(
+        EditRequest(
+            relative_path="docs/design.md",
+            operation=EditOperationKind.WRITE,
+            content='api_key = "super-secret-value"\n',
+        ),
+        Path("/tmp/docs/design.md"),
+    )
+
+    assert result.decision == ApprovalDecision.DENIED
+    assert (
+        result.reason
+        == "secret-like content detected; explicit human approval is required"
+    )
+
+
+def test_scoped_src_approval_hook_denies_secret_like_content() -> None:
+    result = approve_docs_artifacts_and_src_devagents(
+        EditRequest(
+            relative_path="src/devagents/runtime/editor.py",
+            operation=EditOperationKind.WRITE,
+            content='password = "super-secret-value"\n',
+        ),
+        Path("/tmp/src/devagents/runtime/editor.py"),
+    )
+
+    assert result.decision == ApprovalDecision.DENIED
+    assert (
+        result.reason
+        == "secret-like content detected; explicit human approval is required"
+    )
+
+
+def test_conservative_approval_hook_denies_structured_secret_risk_flag() -> None:
+    result = approve_docs_and_artifacts_only(
+        EditRequest(
+            relative_path="docs/design.md",
+            operation=EditOperationKind.WRITE,
+            content="# Design\n",
+            risk_flags=(EditRiskFlag.SECRET_MATERIAL,),
+        ),
+        Path("/tmp/docs/design.md"),
+    )
+
+    assert result.decision == ApprovalDecision.DENIED
+    assert (
+        result.reason
+        == "secret-like content detected; explicit human approval is required"
+    )
+
+
+def test_scoped_src_approval_hook_denies_structured_secret_risk_flag() -> None:
+    result = approve_docs_artifacts_and_src_devagents(
+        EditRequest(
+            relative_path="src/devagents/runtime/editor.py",
+            operation=EditOperationKind.WRITE,
+            content="value = 1\n",
+            risk_flags=(EditRiskFlag.SECRET_MATERIAL,),
+        ),
+        Path("/tmp/src/devagents/runtime/editor.py"),
+    )
+
+    assert result.decision == ApprovalDecision.DENIED
+    assert (
+        result.reason
+        == "secret-like content detected; explicit human approval is required"
+    )

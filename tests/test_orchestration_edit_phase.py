@@ -14,6 +14,7 @@ from orchestration_test_helpers import (
 
 from devagents.orchestration.artifact_writer import WorkflowArtifactWriter
 from devagents.orchestration.edit_phase import EditPhaseOrchestrator
+from devagents.runtime.code_editing import CodeEditKind, CodeEditRiskFlag
 
 
 def test_edit_phase_builds_safe_edit_operations_for_docs_and_artifacts(
@@ -200,3 +201,173 @@ def test_edit_phase_applies_safe_and_structured_edits_and_records_paths(
     assert "src/devagents/runtime/editor.py" in state.changed_files
     assert "src/devagents/agents/implementation.py" in state.changed_files
     assert any("拒否" in note or "denied" in note for note in state.notes)
+
+
+def test_edit_phase_ignores_non_src_targets_in_fix_proposals(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    code_editor = DummyCodeEditor()
+    orchestrator = EditPhaseOrchestrator(
+        safe_editor=DummySafeEditor(),
+        code_editor=code_editor,
+        artifact_writer=writer,
+    )
+
+    requests = orchestrator.build_structured_fix_code_edit_requests(
+        {
+            "edit_proposals": [
+                {
+                    "targets": [
+                        "docs/design.md",
+                        "src/devagents/runtime/editor.py",
+                    ],
+                    "instructions": ["apply fix update"],
+                    "edits": [
+                        {
+                            "edit_kind": "replace_block",
+                            "target_symbol": "SafeEditor.apply",
+                            "intent": "update editor apply",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert len(requests) == 1
+    assert requests[0].relative_path == "src/devagents/runtime/editor.py"
+    assert requests[0].kind is CodeEditKind.REPLACE_MARKED_BLOCK
+    assert requests[0].risk_flags == ()
+
+
+def test_edit_phase_builds_structured_code_edit_requests_with_risk_flags(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    orchestrator = EditPhaseOrchestrator(
+        safe_editor=DummySafeEditor(),
+        code_editor=DummyCodeEditor(),
+        artifact_writer=writer,
+    )
+
+    requests = orchestrator.build_structured_code_edit_requests(
+        {
+            "edit_proposals": [
+                {
+                    "targets": ["src/devagents/runtime/editor.py"],
+                    "instructions": ["apply structured update"],
+                    "risk_flags": [
+                        "dependency_change",
+                        "security_impact",
+                        "dependency_change",
+                        "unknown_flag",
+                    ],
+                    "edits": [
+                        {
+                            "edit_kind": "replace_block",
+                            "target_symbol": "SafeEditor.apply",
+                            "intent": "update editor apply",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert len(requests) == 1
+    assert requests[0].relative_path == "src/devagents/runtime/editor.py"
+    assert requests[0].kind is CodeEditKind.REPLACE_MARKED_BLOCK
+    assert requests[0].risk_flags == (
+        CodeEditRiskFlag.DEPENDENCY_CHANGE,
+        CodeEditRiskFlag.SECURITY_IMPACT,
+    )
+
+
+def test_edit_phase_records_note_when_structured_code_edit_is_denied(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+
+    class DeniedCodeEditResult:
+        def __init__(self) -> None:
+            self.ok = False
+            self.changed = False
+
+    class DeniedCodeEditor:
+        def __init__(self) -> None:
+            self.requests = []
+
+        def apply(self, request):
+            self.requests.append(request)
+            return DeniedCodeEditResult()
+
+    code_editor = DeniedCodeEditor()
+    orchestrator = EditPhaseOrchestrator(
+        safe_editor=DummySafeEditor(),
+        code_editor=code_editor,
+        artifact_writer=writer,
+    )
+    state = build_state()
+
+    implementation_result = result(
+        outputs={
+            "implementation": {
+                "edit_proposals": [
+                    {
+                        "targets": ["src/devagents/runtime/editor.py"],
+                        "instructions": ["apply structured update"],
+                        "edits": [
+                            {
+                                "edit_kind": "replace_block",
+                                "target_symbol": "SafeEditor.apply",
+                                "intent": "update editor apply",
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    orchestrator.apply_safe_edit_phase(
+        state=state,
+        requirement=state.requirement,
+        requirements_result=result(outputs={"normalized_requirements": {}}),
+        planning_result=result(outputs={"plan": {}}),
+        documentation_result=result(
+            outputs={
+                "design_document": "# Design\n",
+                "documentation_bundle": {},
+            }
+        ),
+        implementation_result=implementation_result,
+        test_design_result=result(outputs={"test_plan": {}}),
+        test_execution_result=result(outputs={"test_results": {}}),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "ok",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                }
+            }
+        ),
+        fix_result=None,
+    )
+
+    assert code_editor.requests
+    assert "src/devagents/runtime/editor.py" not in state.changed_files
+    assert any("safe edit phase" in note for note in state.notes)

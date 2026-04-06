@@ -25,6 +25,7 @@ bounded string operations so behavior remains predictable.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -34,6 +35,14 @@ from typing import Callable
 DEFAULT_ALLOWED_PREFIXES = ("src/devagents",)
 DEFAULT_PROTECTED_PREFIXES = (".git", ".venv")
 DEFAULT_ALLOWED_EXTENSIONS = (".py",)
+SECRET_DETECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token)\s*=\s*['\"][^'\"]+['\"]"
+    ),
+    re.compile(r"(?i)(password|passwd|pwd)\s*=\s*['\"][^'\"]+['\"]"),
+    re.compile(r"(?i)-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
+    re.compile(r"(?i)ghp_[A-Za-z0-9]{20,}"),
+)
 
 
 class CodeEditKind(StrEnum):
@@ -53,6 +62,17 @@ class CodeApprovalDecision(StrEnum):
     DENIED = "denied"
 
 
+class CodeEditRiskFlag(StrEnum):
+    """Structured risk flags carried with code edit requests."""
+
+    DESTRUCTIVE = "destructive"
+    BROAD_REWRITE = "broad_rewrite"
+    DEPENDENCY_CHANGE = "dependency_change"
+    ENVIRONMENT_CHANGE = "environment_change"
+    SECURITY_IMPACT = "security_impact"
+    SECRET_MATERIAL = "secret_material"
+
+
 @dataclass(slots=True)
 class CodeEditRequest:
     """A single structured code edit request."""
@@ -60,6 +80,7 @@ class CodeEditRequest:
     relative_path: str
     kind: CodeEditKind
     reason: str
+    risk_flags: tuple[CodeEditRiskFlag, ...] = ()
     content: str | None = None
     marker: str | None = None
     begin_marker: str | None = None
@@ -462,6 +483,28 @@ class StructuredCodeEditor:
         return absolute_path
 
 
+def _find_secret_like_content(request: CodeEditRequest) -> str | None:
+    candidates = [
+        request.content,
+        request.new_snippet,
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        for pattern in SECRET_DETECTION_PATTERNS:
+            if pattern.search(candidate):
+                return (
+                    "secret-like content detected; explicit human approval is required"
+                )
+    return None
+
+
+def has_code_edit_risk_flag(request: CodeEditRequest, *flags: CodeEditRiskFlag) -> bool:
+    """Return whether the request carries any of the given structured risk flags."""
+    request_flags = set(request.risk_flags)
+    return any(flag in request_flags for flag in flags)
+
+
 def approve_src_devagents_only(
     request: CodeEditRequest,
     absolute_path: Path,
@@ -471,6 +514,7 @@ def approve_src_devagents_only(
     Rules:
     - allow only files under `src/devagents/`
     - deny edits outside `.py` files
+    - deny edits that appear to introduce secrets or credentials
     - deny requests that look like broad free-form rewrites
     - allow only the supported structured edit kinds
     """
@@ -501,6 +545,39 @@ def approve_src_devagents_only(
             decision=CodeApprovalDecision.DENIED,
             reason="unsupported structured edit kind",
         )
+
+    secret_detection_reason = _find_secret_like_content(request)
+    if secret_detection_reason is not None or has_code_edit_risk_flag(
+        request, CodeEditRiskFlag.SECRET_MATERIAL
+    ):
+        return CodeApprovalResult(
+            decision=CodeApprovalDecision.DENIED,
+            reason=(
+                secret_detection_reason
+                or "secret-like content detected; explicit human approval is required"
+            ),
+        )
+
+    if has_code_edit_risk_flag(
+        request,
+        CodeEditRiskFlag.DESTRUCTIVE,
+        CodeEditRiskFlag.DEPENDENCY_CHANGE,
+        CodeEditRiskFlag.ENVIRONMENT_CHANGE,
+        CodeEditRiskFlag.SECURITY_IMPACT,
+        CodeEditRiskFlag.BROAD_REWRITE,
+    ):
+        return CodeApprovalResult(
+            decision=CodeApprovalDecision.DENIED,
+            reason="structured risk flags require explicit human approval",
+        )
+
+    if request.kind == CodeEditKind.REPLACE_MARKED_BLOCK:
+        content = request.content or ""
+        if len(content) > 4000 or content.count("\n") > 120:
+            return CodeApprovalResult(
+                decision=CodeApprovalDecision.DENIED,
+                reason="broad marked-block rewrites require explicit human approval",
+            )
 
     return CodeApprovalResult(
         decision=CodeApprovalDecision.APPROVED,
