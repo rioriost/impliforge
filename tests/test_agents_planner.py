@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+import asyncio
+
+from devagents.agents.base import AgentTask
+from devagents.agents.planner import PlanningAgent
+from devagents.orchestration.workflow import create_workflow_state
+
+
+def build_state():
+    return create_workflow_state(
+        workflow_id="wf-planner-001",
+        requirement="Ship a planner-backed workflow",
+        model="gpt-5.4",
+    )
+
+
+def test_run_builds_plan_from_normalized_requirements() -> None:
+    agent = PlanningAgent()
+    state = build_state()
+    normalized = {
+        "objective": "Deliver a resumable workflow",
+        "constraints": [" keep Copilot SDK isolated ", "use uv"],
+        "acceptance_criteria": [" restore sessions ", "route models by task "],
+        "open_questions": [" clarify approval flow "],
+    }
+    task = AgentTask(
+        name="planning",
+        objective="Create implementation plan",
+        inputs={"normalized_requirements": normalized},
+    )
+
+    result = asyncio.run(agent.run(task, state))
+
+    assert result.status == "completed"
+    assert result.is_success is True
+    assert "実行計画" in result.summary
+
+    plan = result.outputs["plan"]
+    assert plan["goal"] == "Deliver a resumable workflow"
+    assert plan["constraints"] == ["keep Copilot SDK isolated", "use uv"]
+    assert plan["acceptance_criteria"] == [
+        "restore sessions",
+        "route models by task",
+    ]
+    assert plan["open_questions"] == ["clarify approval flow"]
+    assert plan["deliverables"] == [
+        "docs/implementation-plan.md",
+        "artifacts/workflow-state.json",
+        "artifacts/run-summary.json",
+    ]
+    assert plan["next_actions"] == result.next_actions
+    assert len(plan["phases"]) == 4
+    assert [item["task_id"] for item in plan["task_breakdown"]] == [
+        "requirements_analysis",
+        "planning",
+        "documentation",
+        "implementation",
+        "test_design",
+        "test_execution",
+        "review",
+        "finalization",
+    ]
+    assert result.outputs["open_questions"] == ["clarify approval flow"]
+    assert result.risks == [
+        "実エージェント追加前は最小フローのみ実行可能",
+        "未解決の open questions が残っているため、後続実装で確認が必要",
+    ]
+    assert result.metrics == {
+        "constraint_count": 2,
+        "acceptance_criteria_count": 2,
+        "open_question_count": 1,
+        "task_count": 8,
+    }
+
+
+def test_run_falls_back_to_state_requirement_and_empty_lists() -> None:
+    agent = PlanningAgent()
+    state = build_state()
+    task = AgentTask(
+        name="planning",
+        objective="Create implementation plan",
+        inputs={"normalized_requirements": "not-a-dict"},
+    )
+
+    result = asyncio.run(agent.run(task, state))
+
+    assert result.status == "completed"
+    plan = result.outputs["plan"]
+    assert plan["goal"] == state.requirement
+    assert plan["constraints"] == []
+    assert plan["acceptance_criteria"] == []
+    assert plan["open_questions"] == []
+    assert result.outputs["open_questions"] == []
+    assert result.risks == ["実エージェント追加前は最小フローのみ実行可能"]
+    assert result.metrics == {
+        "constraint_count": 0,
+        "acceptance_criteria_count": 0,
+        "open_question_count": 0,
+        "task_count": 8,
+    }
+
+
+def test_get_normalized_requirements_returns_dict_only() -> None:
+    agent = PlanningAgent()
+
+    task_with_dict = AgentTask(
+        name="planning",
+        objective="Create implementation plan",
+        inputs={"normalized_requirements": {"objective": "x"}},
+    )
+    task_with_other = AgentTask(
+        name="planning",
+        objective="Create implementation plan",
+        inputs={"normalized_requirements": ["x"]},
+    )
+
+    assert agent._get_normalized_requirements(task_with_dict) == {"objective": "x"}
+    assert agent._get_normalized_requirements(task_with_other) == {}
+
+
+def test_normalize_list_trims_and_filters_values() -> None:
+    agent = PlanningAgent()
+
+    assert agent._normalize_list([" keep ", "", "   ", 42, None, "done"]) == [
+        "keep",
+        "42",
+        "None",
+        "done",
+    ]
+    assert agent._normalize_list("not-a-list") == []
