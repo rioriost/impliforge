@@ -322,6 +322,92 @@ def test_build_workflow_details_payload_includes_all_phase_results(
     assert payload["fix_result"]["outputs"]["fix_plan"]["severity"] == "medium"
 
 
+def test_build_approval_risk_summary_reports_explicit_approval_reasons(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.add_risk("dependency additions require explicit human approval")
+    state.add_risk("High token usage triggered degraded routing mode")
+    state.add_open_question("Who approves the dependency change?")
+    state.require_task("implementation").mark_blocked("awaiting approval")
+
+    results = {
+        "implementation_result": {
+            "status": "completed",
+            "summary": "implementation ready",
+            "outputs": {},
+            "artifacts": [],
+            "next_actions": [],
+            "risks": ["security-impacting edits require explicit human approval"],
+            "metrics": {},
+            "failure_category": None,
+            "failure_cause": None,
+        },
+        "review_result": {
+            "status": "completed",
+            "summary": "review complete",
+            "outputs": {},
+            "artifacts": [],
+            "next_actions": [],
+            "risks": ["dependency additions require explicit human approval"],
+            "metrics": {},
+            "failure_category": None,
+            "failure_cause": None,
+        },
+    }
+
+    summary = writer.build_approval_risk_summary(state=state, results=results)
+
+    assert summary["approval_required"] is True
+    assert summary["approval_reasons"] == [
+        "dependency additions require explicit human approval",
+        "security-impacting edits require explicit human approval",
+    ]
+    assert summary["risk_register"] == [
+        "dependency additions require explicit human approval",
+        "High token usage triggered degraded routing mode",
+        "security-impacting edits require explicit human approval",
+    ]
+    assert summary["operator_visibility"] == {
+        "phase": state.phase.value,
+        "blocked_tasks": ["implementation"],
+        "open_questions": ["Who approves the dependency change?"],
+    }
+
+
+def test_build_approval_risk_summary_marks_needs_human_input_phase(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.set_phase(state.phase.NEEDS_HUMAN_INPUT)
+
+    summary = writer.build_approval_risk_summary(
+        state=state,
+        results={"review_result": None},
+    )
+
+    assert summary["approval_required"] is True
+    assert summary["approval_reasons"] == [
+        "Workflow entered needs_human_input phase; operator review or approval is required before continuation."
+    ]
+    assert summary["risk_register"] == []
+    assert summary["operator_visibility"] == {
+        "phase": "needs_human_input",
+        "blocked_tasks": [],
+        "open_questions": [],
+    }
+
+
 def test_build_run_summary_payload_and_result_to_dict_handle_optional_fix_result(
     tmp_path: Path,
 ) -> None:

@@ -2250,6 +2250,97 @@ def test_run_cli_e2e_style_flow_surfaces_multi_phase_artifacts_and_summary(
     assert "  - docs/final-summary.md" in captured
 
 
+def test_run_cli_e2e_style_flow_handles_long_requirement_input(
+    monkeypatch: Any, tmp_path: Path, capsys: Any
+) -> None:
+    long_requirement = "Build a multi-agent workflow with durable context. " * 80
+
+    state = make_state()
+    state.set_phase(WorkflowPhase.COMPLETED)
+    state.model = "gpt-5.4-mini"
+    state.set_session("sess-long-input", parent_session_id="sess-parent")
+    state.update_task_status("requirements_analysis", TaskStatus.COMPLETED)
+    state.update_task_status("planning", TaskStatus.COMPLETED)
+    state.update_task_status("documentation", TaskStatus.COMPLETED)
+    state.update_task_status("implementation", TaskStatus.COMPLETED)
+    state.update_task_status("test_design", TaskStatus.COMPLETED)
+    state.update_task_status("test_execution", TaskStatus.COMPLETED)
+    state.update_task_status("review", TaskStatus.COMPLETED)
+    state.add_artifact("docs/design.md")
+    state.add_artifact("artifacts/summaries/wf-test-main/run-summary.json")
+
+    created: list[Any] = []
+
+    class FakeOrchestrator:
+        def __init__(
+            self,
+            *,
+            model: str,
+            artifacts_dir: Path,
+            docs_dir: Path,
+            routing_mode: RoutingMode,
+        ) -> None:
+            self.model = model
+            self.artifacts_dir = artifacts_dir
+            self.docs_dir = docs_dir
+            self.routing_mode = routing_mode
+            self.session_manager = DummySessionManager(should_rotate=True)
+            self.run_calls: list[dict[str, Any]] = []
+            created.append(self)
+
+        async def run(
+            self,
+            requirement: str,
+            *,
+            token_usage_ratio: float = 0.35,
+        ) -> Any:
+            self.run_calls.append(
+                {
+                    "requirement": requirement,
+                    "token_usage_ratio": token_usage_ratio,
+                }
+            )
+            return state
+
+    monkeypatch.setattr(main_module, "SkeletonOrchestrator", FakeOrchestrator)
+
+    exit_code = asyncio.run(
+        _run_cli(
+            requirement=long_requirement,
+            model="gpt-5.4",
+            artifacts_dir=str(tmp_path / "artifacts"),
+            docs_dir=str(tmp_path / "docs"),
+            token_usage_ratio=0.9,
+            routing_mode=RoutingMode.QUALITY.value,
+        )
+    )
+
+    captured = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert len(created) == 1
+    fake = created[0]
+    assert fake.run_calls == [
+        {
+            "requirement": long_requirement,
+            "token_usage_ratio": 0.9,
+        }
+    ]
+    assert fake.session_manager.should_rotate_calls == [
+        {
+            "token_usage_ratio": 0.9,
+            "current_session_id": "sess-long-input",
+        }
+    ]
+    assert "workflow_id: wf-test-main" in captured
+    assert "phase: completed" in captured
+    assert "routing_mode: quality" in captured
+    assert "rotate_session: True" in captured
+    assert "rotation_reason: threshold exceeded" in captured
+    assert "  - docs/design.md" in captured
+    assert "  - artifacts/summaries/wf-test-main/run-summary.json" in captured
+
+
 def test_main_parses_args_and_runs_cli(monkeypatch: Any) -> None:
     parser_args = SimpleNamespace(
         requirement="Ship feature",

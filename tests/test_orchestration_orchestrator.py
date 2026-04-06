@@ -275,6 +275,10 @@ def test_finalize_success_marks_pending_dependency_tasks_as_skipped() -> None:
     assert state.require_task("documentation").status == TaskStatus.SKIPPED
     assert state.require_task("review").status == TaskStatus.SKIPPED
     assert state.require_task("finalization").status == TaskStatus.COMPLETED
+    assert state.require_task("finalization").outputs["acceptance_gate"] == {
+        "ready_for_completion": True,
+        "failed_checks": [],
+    }
     assert state.require_task("finalization").outputs["next_actions"] == [
         "Persist final workflow summary",
         "Review generated artifacts",
@@ -288,6 +292,44 @@ def test_finalize_success_marks_pending_dependency_tasks_as_skipped() -> None:
         "documentation",
         "review",
     ]
+    assert state.execution_trace[-1].details["acceptance_ready"] is True
+
+
+def test_finalize_success_blocks_when_acceptance_readiness_is_not_satisfied() -> None:
+    state = make_state()
+    state.update_task_status("requirements_analysis", TaskStatus.COMPLETED)
+    state.update_task_status("planning", TaskStatus.COMPLETED)
+    state.add_open_question("Need operator approval for dependency change")
+
+    orchestrator = Orchestrator(
+        requirements_agent=DummyAgent("requirements", AgentResult.success("unused")),
+        planning_agent=DummyAgent("planner", AgentResult.success("unused")),
+    )
+
+    orchestrator._finalize_success(state)
+
+    assert state.require_task("documentation").status == TaskStatus.SKIPPED
+    assert state.require_task("review").status == TaskStatus.SKIPPED
+    assert state.require_task("finalization").status == TaskStatus.BLOCKED
+    assert state.require_task("finalization").notes[-1] == (
+        "Minimal orchestrator completion is blocked until acceptance readiness is satisfied."
+    )
+    assert state.require_task("finalization").outputs["acceptance_gate"] == {
+        "ready_for_completion": False,
+        "failed_checks": ["open_questions_resolved"],
+    }
+    assert state.require_task("finalization").outputs["next_actions"] == [
+        "Resolve open questions and blocked workflow tasks before declaring completion",
+    ]
+    assert state.phase == WorkflowPhase.INITIALIZED
+    assert (
+        state.notes[-1] == "Workflow completion blocked pending acceptance readiness."
+    )
+    assert state.execution_trace[-1].event_type == "workflow_completed"
+    assert state.execution_trace[-1].task_id == "finalization"
+    assert state.execution_trace[-1].status == "blocked"
+    assert state.execution_trace[-1].summary == "Workflow completion blocked."
+    assert state.execution_trace[-1].details["acceptance_ready"] is False
 
 
 def test_minimal_orchestrator_completes_and_skips_optional_tasks(
@@ -433,14 +475,22 @@ def test_orchestrator_runs_all_configured_agents_and_collects_outputs(
 
     state = asyncio.run(orchestrator.run("Build a multi-agent workflow"))
 
-    assert state.phase == WorkflowPhase.COMPLETED
+    assert state.phase == WorkflowPhase.REVIEWING
     assert state.require_task("requirements_analysis").status == TaskStatus.COMPLETED
     assert state.require_task("planning").status == TaskStatus.COMPLETED
     assert state.require_task("implementation").status == TaskStatus.COMPLETED
     assert state.require_task("test_execution").status == TaskStatus.COMPLETED
     assert state.require_task("review").status == TaskStatus.COMPLETED
     assert state.require_task("documentation").status == TaskStatus.SKIPPED
-    assert state.require_task("finalization").status == TaskStatus.COMPLETED
+    assert state.require_task("finalization").status == TaskStatus.BLOCKED
+
+    assert state.require_task("finalization").outputs["acceptance_gate"] == {
+        "ready_for_completion": False,
+        "failed_checks": ["open_questions_resolved"],
+    }
+    assert state.require_task("finalization").outputs["next_actions"] == [
+        "Resolve open questions and blocked workflow tasks before declaring completion",
+    ]
 
     assert requirements_agent.calls[0].name == "requirements_analysis"
     assert planning_agent.calls[0].name == "planning"

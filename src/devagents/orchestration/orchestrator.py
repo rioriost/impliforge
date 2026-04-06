@@ -339,28 +339,68 @@ class Orchestrator:
                 skipped_dependencies.append(dependency_id)
 
         finalization_task = state.require_task("finalization")
-        finalization_task.mark_completed(
-            outputs={
-                "next_actions": [
+        blocking_open_questions = bool(state.open_questions)
+        blocking_tasks = [
+            task.task_id
+            for task in state.tasks
+            if task.task_id != "finalization"
+            and task.status in {TaskStatus.BLOCKED, TaskStatus.FAILED}
+        ]
+        acceptance_ready = not blocking_open_questions and not blocking_tasks
+        failed_checks: list[str] = []
+        if blocking_open_questions:
+            failed_checks.append("open_questions_resolved")
+        if blocking_tasks:
+            failed_checks.append("blocking_work_resolved")
+
+        finalization_outputs = {
+            "acceptance_gate": {
+                "ready_for_completion": acceptance_ready,
+                "failed_checks": failed_checks,
+            },
+            "next_actions": (
+                [
                     "Persist final workflow summary",
                     "Review generated artifacts",
                 ]
-            }
-        )
-        state.touch()
-        state.set_phase(WorkflowPhase.COMPLETED)
-        state.add_note("Workflow completed.")
+                if acceptance_ready
+                else [
+                    "Resolve open questions and blocked workflow tasks before declaring completion",
+                ]
+            ),
+        }
+
+        if acceptance_ready:
+            finalization_task.mark_completed(outputs=finalization_outputs)
+            state.touch()
+            state.set_phase(WorkflowPhase.COMPLETED)
+            state.add_note("Workflow completed.")
+            event_status = finalization_task.status.value
+            event_summary = "Workflow completed."
+        else:
+            finalization_task.mark_blocked(
+                "Minimal orchestrator completion is blocked until acceptance readiness is satisfied."
+            )
+            finalization_task.outputs.update(finalization_outputs)
+            state.touch()
+            state.add_note("Workflow completion blocked pending acceptance readiness.")
+            event_status = finalization_task.status.value
+            event_summary = "Workflow completion blocked."
+
         state.record_event(
             "workflow_completed",
             task_id="finalization",
-            status=finalization_task.status.value,
-            summary="Workflow completed.",
+            status=event_status,
+            summary=event_summary,
             details={
                 "skipped_dependencies": skipped_dependencies,
                 "final_artifact_count": len(state.artifacts),
                 "final_changed_file_count": len(state.changed_files),
                 "open_question_count": len(state.open_questions),
                 "risk_count": len(state.risks),
+                "acceptance_ready": acceptance_ready,
+                "blocking_open_questions": blocking_open_questions,
+                "blocking_tasks": blocking_tasks,
             },
         )
 

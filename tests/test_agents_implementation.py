@@ -70,6 +70,7 @@ def test_implementation_agent_generates_structured_proposal() -> None:
         "acceptance_criteria_count": 2,
         "task_breakdown_count": 2,
         "code_change_slice_count": 5,
+        "downstream_consumer_count": 4,
         "open_question_count": 1,
     }
 
@@ -150,6 +151,51 @@ def test_implementation_agent_generates_structured_proposal() -> None:
         "src/devagents/**/*.py allowlisted edit proposals",
     ]
 
+    downstream_handoff = implementation["downstream_handoff"]
+    assert downstream_handoff == {
+        "consumers": [
+            {
+                "phase": "test_design",
+                "inputs": [
+                    "implementation.code_change_slices",
+                    "implementation.deliverables",
+                    "implementation.acceptance_criteria",
+                    "implementation.open_questions",
+                ],
+                "purpose": "Generate validation scenarios for proposed change slices and delivery artifacts.",
+            },
+            {
+                "phase": "test_execution",
+                "inputs": [
+                    "implementation.code_change_slices",
+                    "implementation.edit_proposals",
+                    "implementation.constraints",
+                ],
+                "purpose": "Validate executable proposal readiness and confirm proposed targets remain testable.",
+            },
+            {
+                "phase": "review",
+                "inputs": [
+                    "implementation.strategy",
+                    "implementation.code_change_slices",
+                    "implementation.edit_proposals",
+                    "implementation.open_questions",
+                ],
+                "purpose": "Assess proposal completeness, risk, and unresolved execution blockers before completion.",
+            },
+            {
+                "phase": "fixer",
+                "inputs": [
+                    "implementation.code_change_slices",
+                    "implementation.edit_proposals",
+                    "implementation.open_questions",
+                ],
+                "purpose": "Reuse implementation proposal structure when generating focused fix slices and revalidation steps.",
+            },
+        ],
+        "executable_change_proposal_ready": True,
+    }
+
     edit_proposals = implementation["edit_proposals"]
     assert [item["proposal_id"] for item in edit_proposals] == [
         "src-structured-main-update",
@@ -213,6 +259,7 @@ def test_implementation_agent_uses_requirement_fallback_and_empty_excerpt() -> N
         "acceptance_criteria_count": 0,
         "task_breakdown_count": 1,
         "code_change_slice_count": 5,
+        "downstream_consumer_count": 4,
         "open_question_count": 0,
     }
 
@@ -230,6 +277,18 @@ def test_implementation_agent_uses_requirement_fallback_and_empty_excerpt() -> N
     ]
     assert implementation["open_questions"] == []
     assert implementation["copilot_response_excerpt"] == ""
+    assert (
+        implementation["downstream_handoff"]["executable_change_proposal_ready"] is True
+    )
+    assert [
+        consumer["phase"]
+        for consumer in implementation["downstream_handoff"]["consumers"]
+    ] == [
+        "test_design",
+        "test_execution",
+        "review",
+        "fixer",
+    ]
 
 
 def test_implementation_agent_normalization_helpers() -> None:

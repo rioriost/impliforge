@@ -346,6 +346,33 @@ def test_list_models_raises_client_error_when_environment_preflight_fails_and_fa
         raise AssertionError("Expected CopilotClientError")
 
 
+def test_validate_environment_allows_default_environment_assumptions() -> None:
+    client = CopilotClient(CopilotClientConfig())
+
+    validation = client.validate_environment()
+
+    assert validation.ok is True
+    assert validation.issues == ()
+
+
+def test_validate_environment_ignores_unset_paths_when_other_path_is_valid(
+    tmp_path: Path,
+) -> None:
+    working_directory = tmp_path / "workspace"
+    working_directory.mkdir()
+    client = CopilotClient(
+        CopilotClientConfig(
+            working_directory=str(working_directory),
+            config_dir=None,
+        )
+    )
+
+    validation = client.validate_environment()
+
+    assert validation.ok is True
+    assert validation.issues == ()
+
+
 def test_build_resume_request_merges_prompts_and_sets_resume_metadata() -> None:
     client = CopilotClient()
 

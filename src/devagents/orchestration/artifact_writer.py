@@ -9,7 +9,7 @@ from typing import Any
 from devagents.agents.base import AgentResult
 from devagents.orchestration.session_manager import SessionManager
 from devagents.orchestration.state_store import StateStore
-from devagents.orchestration.workflow import TaskStatus, WorkflowState
+from devagents.orchestration.workflow import TaskStatus, WorkflowPhase, WorkflowState
 
 
 class WorkflowArtifactWriter:
@@ -262,6 +262,10 @@ class WorkflowArtifactWriter:
             },
             "artifacts": list(state.artifacts),
             "execution_trace": [event.to_dict() for event in state.execution_trace],
+            "approval_risk_summary": self.build_approval_risk_summary(
+                state=state,
+                results=results,
+            ),
             "change_impact_summary": self.build_change_impact_summary(
                 state=state,
                 implementation_result=implementation_result,
@@ -511,6 +515,49 @@ class WorkflowArtifactWriter:
             "metrics": dict(result.metrics),
             "failure_category": failure_category or None,
             "failure_cause": failure_cause or None,
+        }
+
+    def build_approval_risk_summary(
+        self,
+        *,
+        state: WorkflowState,
+        results: dict[str, dict[str, Any] | None],
+    ) -> dict[str, Any]:
+        """Build operator-facing approval and risk visibility for the run summary."""
+        risk_register = self._merge_unique_strings(
+            state.risks,
+            *[
+                result_payload.get("risks", [])
+                for result_payload in results.values()
+                if isinstance(result_payload, dict)
+            ],
+        )
+
+        approval_required = state.phase is WorkflowPhase.NEEDS_HUMAN_INPUT or any(
+            "human approval" in risk.lower() or "approval" in risk.lower()
+            for risk in risk_register
+        )
+
+        approval_reasons = [
+            risk
+            for risk in risk_register
+            if "human approval" in risk.lower() or "approval" in risk.lower()
+        ]
+
+        if state.phase is WorkflowPhase.NEEDS_HUMAN_INPUT:
+            phase_reason = "Workflow entered needs_human_input phase; operator review or approval is required before continuation."
+            if phase_reason not in approval_reasons:
+                approval_reasons.append(phase_reason)
+
+        return {
+            "approval_required": approval_required,
+            "approval_reasons": approval_reasons,
+            "risk_register": risk_register,
+            "operator_visibility": {
+                "phase": state.phase.value,
+                "blocked_tasks": [task.task_id for task in state.blocked_tasks()],
+                "open_questions": self._normalize_list(state.open_questions),
+            },
         }
 
     def build_change_impact_summary(

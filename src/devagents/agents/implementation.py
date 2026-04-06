@@ -143,6 +143,49 @@ class ImplementationAgent(BaseAgent):
             "copilot_response_excerpt": copilot_response[:500]
             if copilot_response
             else "",
+            "downstream_handoff": {
+                "consumers": [
+                    {
+                        "phase": "test_design",
+                        "inputs": [
+                            "implementation.code_change_slices",
+                            "implementation.deliverables",
+                            "implementation.acceptance_criteria",
+                            "implementation.open_questions",
+                        ],
+                        "purpose": "Generate validation scenarios for proposed change slices and delivery artifacts.",
+                    },
+                    {
+                        "phase": "test_execution",
+                        "inputs": [
+                            "implementation.code_change_slices",
+                            "implementation.edit_proposals",
+                            "implementation.constraints",
+                        ],
+                        "purpose": "Validate executable proposal readiness and confirm proposed targets remain testable.",
+                    },
+                    {
+                        "phase": "review",
+                        "inputs": [
+                            "implementation.strategy",
+                            "implementation.code_change_slices",
+                            "implementation.edit_proposals",
+                            "implementation.open_questions",
+                        ],
+                        "purpose": "Assess proposal completeness, risk, and unresolved execution blockers before completion.",
+                    },
+                    {
+                        "phase": "fixer",
+                        "inputs": [
+                            "implementation.code_change_slices",
+                            "implementation.edit_proposals",
+                            "implementation.open_questions",
+                        ],
+                        "purpose": "Reuse implementation proposal structure when generating focused fix slices and revalidation steps.",
+                    },
+                ],
+                "executable_change_proposal_ready": True,
+            },
             "edit_proposals": [
                 {
                     "proposal_id": "src-structured-main-update",
@@ -236,9 +279,12 @@ class ImplementationAgent(BaseAgent):
                 "acceptance_criteria_count": len(acceptance_criteria),
                 "task_breakdown_count": len(task_breakdown),
                 "code_change_slice_count": len(implementation["code_change_slices"]),
+                "downstream_consumer_count": len(
+                    implementation["downstream_handoff"]["consumers"]
+                ),
                 "open_question_count": len(open_questions),
             },
-        )# END STRUCTURED EDIT: ImplementationAgent.run
+        )  # END STRUCTURED EDIT: ImplementationAgent.run
 
     def _as_dict(self, value: Any) -> dict[str, Any]:
         if isinstance(value, dict):
