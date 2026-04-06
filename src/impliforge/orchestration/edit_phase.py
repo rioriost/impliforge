@@ -13,8 +13,19 @@ from impliforge.runtime.code_editing import (
     CodeEditRequest,
     CodeEditRiskFlag,
     StructuredCodeEditor,
+    proposal_consumability_is_structured,
 )
-from impliforge.runtime.editor import EditOperationKind, EditRequest, SafeEditor
+from impliforge.runtime.code_editing import (
+    proposal_policy_requires_explicit_approval as code_policy_requires_explicit_approval,
+)
+from impliforge.runtime.editor import (
+    EditOperationKind,
+    EditRequest,
+    SafeEditor,
+)
+from impliforge.runtime.editor import (
+    proposal_policy_requires_explicit_approval as file_policy_requires_explicit_approval,
+)
 
 
 class EditPhaseOrchestrator:
@@ -315,39 +326,31 @@ class EditPhaseOrchestrator:
         proposal: Any,
     ) -> list[CodeEditRequest]:
         """Convert a proposal payload into structured code edit requests."""
-        if not isinstance(proposal, dict):
+        normalized = self._normalize_edit_proposal(proposal)
+        if normalized is None:
             return []
 
-        targets = proposal.get("targets", [])
-        edits = proposal.get("edits", [])
-        instructions = proposal.get("instructions", [])
-
-        if not isinstance(targets, list) or not isinstance(edits, list):
-            return []
-
-        normalized_instructions = [
-            str(item).strip() for item in instructions if str(item).strip()
-        ]
         reason = (
-            " | ".join(normalized_instructions)
-            or str(
-                proposal.get("summary", "Apply structured code edit proposal")
-            ).strip()
+            " | ".join(normalized["instructions"])
+            or normalized["summary"]
+            or "Apply structured code edit proposal"
         )
-        risk_flags = self._extract_code_edit_risk_flags(proposal)
+        risk_flags = self._extract_code_edit_risk_flags(normalized)
 
         requests: list[CodeEditRequest] = []
-        for target in targets:
-            target_path = str(target).strip()
+        for target_path in normalized["targets"]:
             if not target_path.startswith("src/impliforge/"):
                 continue
 
-            for edit in edits:
+            for edit in normalized["edits"]:
                 request = self.code_edit_request_from_edit(
                     target_path=target_path,
                     edit=edit,
                     reason=reason,
                     risk_flags=risk_flags,
+                    proposal_id=normalized["proposal_id"],
+                    approval_policy=normalized["approval_policy"],
+                    consumability=normalized["consumability"],
                 )
                 if request is not None:
                     requests.append(request)
@@ -361,6 +364,9 @@ class EditPhaseOrchestrator:
         edit: Any,
         reason: str,
         risk_flags: tuple[CodeEditRiskFlag, ...] = (),
+        proposal_id: str = "",
+        approval_policy: str = "",
+        consumability: str = "",
     ) -> CodeEditRequest | None:
         """Convert a single edit payload into a structured code edit request."""
         if not isinstance(edit, dict):
@@ -387,6 +393,9 @@ class EditPhaseOrchestrator:
             kind=CodeEditKind.REPLACE_MARKED_BLOCK,
             reason=request_reason,
             risk_flags=risk_flags,
+            proposal_id=proposal_id,
+            approval_policy=approval_policy,
+            consumability=consumability,
             begin_marker=begin_marker,
             end_marker=end_marker,
             content=content,
@@ -417,6 +426,62 @@ class EditPhaseOrchestrator:
                 normalized_flags.append(flag)
 
         return tuple(normalized_flags)
+
+    def _normalize_edit_proposal(
+        self,
+        proposal: Any,
+    ) -> dict[str, Any] | None:
+        """Validate and normalize a structured edit proposal."""
+        if not isinstance(proposal, dict):
+            return None
+
+        proposal_id = str(proposal.get("proposal_id", "")).strip()
+        summary = str(proposal.get("summary", "")).strip()
+        approval_policy = str(proposal.get("approval_policy", "")).strip()
+        consumability = str(proposal.get("consumability", "")).strip()
+
+        targets = proposal.get("targets", [])
+        instructions = proposal.get("instructions", [])
+        edits = proposal.get("edits", [])
+
+        if not proposal_id or not summary:
+            return None
+        if not isinstance(targets, list) or not isinstance(instructions, list):
+            return None
+        if not isinstance(edits, list) or not edits:
+            return None
+        if not approval_policy or not consumability:
+            return None
+        if not proposal.get("safe_edit_ready", False):
+            return None
+        if not proposal_consumability_is_structured(consumability):
+            return None
+        if not code_policy_requires_explicit_approval(approval_policy):
+            return None
+        if not file_policy_requires_explicit_approval(approval_policy):
+            return None
+
+        normalized_targets = [
+            str(item).strip() for item in targets if str(item).strip()
+        ]
+        normalized_instructions = [
+            str(item).strip() for item in instructions if str(item).strip()
+        ]
+        normalized_edits = [item for item in edits if isinstance(item, dict)]
+
+        if not normalized_targets or not normalized_edits:
+            return None
+
+        return {
+            "proposal_id": proposal_id,
+            "summary": summary,
+            "targets": normalized_targets,
+            "instructions": normalized_instructions,
+            "edits": normalized_edits,
+            "approval_policy": approval_policy,
+            "consumability": consumability,
+            "risk_flags": proposal.get("risk_flags", []),
+        }
 
     def build_structured_replacement_content(
         self,

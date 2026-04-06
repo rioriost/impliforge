@@ -34,6 +34,69 @@ class ImplementationAgent(BaseAgent):
         plan_phases = self._normalize_list(plan.get("phases"))
         task_breakdown = self._normalize_task_breakdown(plan.get("task_breakdown"))
 
+        edit_proposals = [
+            self._build_edit_proposal(
+                proposal_id="src-structured-main-update",
+                summary="Wire implementation outputs into the orchestrator through a structured source edit path.",
+                targets=["src/impliforge/main.py"],
+                instructions=[
+                    "Keep the change small and limited to orchestration flow integration.",
+                    "Do not edit files outside src/impliforge/ without an explicit policy update.",
+                    "Re-run test_execution and review after applying the source edit.",
+                ],
+                edits=[
+                    {
+                        "edit_kind": "replace_block",
+                        "target_symbol": "SkeletonOrchestrator._build_safe_edit_operations",
+                        "intent": "Replace append-only SAFE-EDIT source mutations with structured source edit requests.",
+                    }
+                ],
+                approval_policy="src_impliforge_structured_only",
+                safe_edit_scope="src",
+                consumability="structured_code_editor",
+            ),
+            self._build_edit_proposal(
+                proposal_id="src-structured-editor-update",
+                summary="Extend the safe editor policy to support approved src/impliforge edits through structured updates.",
+                targets=["src/impliforge/runtime/editor.py"],
+                instructions=[
+                    "Restrict edits to src/impliforge/ and preserve protected roots.",
+                    "Require approval for overwrite and delete operations.",
+                    "Record edited files in workflow artifacts after the change.",
+                ],
+                edits=[
+                    {
+                        "edit_kind": "replace_block",
+                        "target_symbol": "SafeEditor.apply",
+                        "intent": "Route approved source edits through structured update handling instead of append-only notes.",
+                    }
+                ],
+                approval_policy="src_impliforge_structured_only",
+                safe_edit_scope="src",
+                consumability="structured_code_editor",
+            ),
+            self._build_edit_proposal(
+                proposal_id="src-structured-implementation-update",
+                summary="Promote implementation proposals into structured code-edit payloads for approved source files.",
+                targets=["src/impliforge/agents/implementation.py"],
+                instructions=[
+                    "Emit structured edit payloads with explicit target symbols or blocks.",
+                    "Avoid free-form append-only source mutations.",
+                    "Keep each edit proposal scoped to one behavior change.",
+                ],
+                edits=[
+                    {
+                        "edit_kind": "replace_block",
+                        "target_symbol": "ImplementationAgent.run",
+                        "intent": "Emit structured edit proposals that can be consumed by a code editing runtime.",
+                    }
+                ],
+                approval_policy="src_impliforge_structured_only",
+                safe_edit_scope="src",
+                consumability="structured_code_editor",
+            ),
+        ]
+
         implementation = {
             "objective": objective,
             "summary": "実装フェーズで着手すべき変更案を整理した。",
@@ -143,6 +206,27 @@ class ImplementationAgent(BaseAgent):
             "copilot_response_excerpt": copilot_response[:500]
             if copilot_response
             else "",
+            "proposal_schema_version": "2.0",
+            "safe_edit_bridge": {
+                "structured_editing_ready": True,
+                "default_consumability": "structured_code_editor",
+                "supported_consumers": [
+                    "safe_edit_phase",
+                    "structured_code_editor",
+                ],
+                "approval_policy_map": {
+                    "docs_artifacts_only": {
+                        "approval_required": True,
+                        "allowed_roots": ["docs", "artifacts"],
+                        "structured_code_editor_compatible": False,
+                    },
+                    "src_impliforge_structured_only": {
+                        "approval_required": True,
+                        "allowed_roots": ["src/impliforge"],
+                        "structured_code_editor_compatible": True,
+                    },
+                },
+            },
             "downstream_handoff": {
                 "consumers": [
                     {
@@ -186,68 +270,7 @@ class ImplementationAgent(BaseAgent):
                 ],
                 "executable_change_proposal_ready": True,
             },
-            "edit_proposals": [
-                {
-                    "proposal_id": "src-structured-main-update",
-                    "mode": "structured_update",
-                    "targets": [
-                        "src/impliforge/main.py",
-                    ],
-                    "summary": "Wire implementation outputs into the orchestrator through a structured source edit path.",
-                    "instructions": [
-                        "Keep the change small and limited to orchestration flow integration.",
-                        "Do not edit files outside src/impliforge/ without an explicit policy update.",
-                        "Re-run test_execution and review after applying the source edit.",
-                    ],
-                    "edits": [
-                        {
-                            "edit_kind": "replace_block",
-                            "target_symbol": "SkeletonOrchestrator._build_safe_edit_operations",
-                            "intent": "Replace append-only SAFE-EDIT source mutations with structured source edit requests.",
-                        },
-                    ],
-                },
-                {
-                    "proposal_id": "src-structured-editor-update",
-                    "mode": "structured_update",
-                    "targets": [
-                        "src/impliforge/runtime/editor.py",
-                    ],
-                    "summary": "Extend the safe editor policy to support approved src/impliforge edits through structured updates.",
-                    "instructions": [
-                        "Restrict edits to src/impliforge/ and preserve protected roots.",
-                        "Require approval for overwrite and delete operations.",
-                        "Record edited files in workflow artifacts after the change.",
-                    ],
-                    "edits": [
-                        {
-                            "edit_kind": "replace_block",
-                            "target_symbol": "SafeEditor.apply",
-                            "intent": "Route approved source edits through structured update handling instead of append-only notes.",
-                        },
-                    ],
-                },
-                {
-                    "proposal_id": "src-structured-implementation-update",
-                    "mode": "structured_update",
-                    "targets": [
-                        "src/impliforge/agents/implementation.py",
-                    ],
-                    "summary": "Promote implementation proposals into structured code-edit payloads for approved source files.",
-                    "instructions": [
-                        "Emit structured edit payloads with explicit target symbols or blocks.",
-                        "Avoid free-form append-only source mutations.",
-                        "Keep each edit proposal scoped to one behavior change.",
-                    ],
-                    "edits": [
-                        {
-                            "edit_kind": "replace_block",
-                            "target_symbol": "ImplementationAgent.run",
-                            "intent": "Emit structured edit proposals that can be consumed by a code editing runtime.",
-                        },
-                    ],
-                },
-            ],
+            "edit_proposals": edit_proposals,
         }
 
         next_actions = [
@@ -283,6 +306,7 @@ class ImplementationAgent(BaseAgent):
                     implementation["downstream_handoff"]["consumers"]
                 ),
                 "open_question_count": len(open_questions),
+                "edit_proposal_count": len(edit_proposals),
             },
         )  # END STRUCTURED EDIT: ImplementationAgent.run
 
@@ -316,4 +340,60 @@ class ImplementationAgent(BaseAgent):
                     "depends_on": depends_on,
                 }
             )
+        return normalized
+
+    def _build_edit_proposal(
+        self,
+        *,
+        proposal_id: str,
+        summary: str,
+        targets: list[str],
+        instructions: list[str],
+        edits: list[dict[str, Any]],
+        approval_policy: str,
+        safe_edit_scope: str,
+        consumability: str,
+    ) -> dict[str, Any]:
+        normalized_targets = self._normalize_list(targets)
+        normalized_instructions = self._normalize_list(instructions)
+        normalized_edits = self._normalize_edits(edits)
+
+        return {
+            "proposal_id": proposal_id,
+            "mode": "structured_update",
+            "summary": summary,
+            "targets": normalized_targets,
+            "instructions": normalized_instructions,
+            "edits": normalized_edits,
+            "approval_policy": approval_policy,
+            "safe_edit_scope": safe_edit_scope,
+            "consumability": consumability,
+            "requires_explicit_approval": approval_policy != "docs_artifacts_only",
+            "safe_edit_ready": bool(normalized_targets and normalized_edits),
+        }
+
+    def _normalize_edits(self, value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+
+        normalized: list[dict[str, str]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+
+            edit_kind = str(item.get("edit_kind", "")).strip()
+            target_symbol = str(item.get("target_symbol", "")).strip()
+            intent = str(item.get("intent", "")).strip()
+
+            if not edit_kind or not target_symbol or not intent:
+                continue
+
+            normalized.append(
+                {
+                    "edit_kind": edit_kind,
+                    "target_symbol": target_symbol,
+                    "intent": intent,
+                }
+            )
+
         return normalized

@@ -69,6 +69,22 @@ class DocumentationAgent(BaseAgent):
                 "design": design_document,
                 "runbook": runbook_document,
             },
+            "documentation_artifacts": [
+                {
+                    "output_key": "design_document",
+                    "path": "docs/design.md",
+                    "title": "Design",
+                    "persist_when": "success",
+                    "content": design_document,
+                },
+                {
+                    "output_key": "runbook_document",
+                    "path": "docs/runbook.md",
+                    "title": "Runbook",
+                    "persist_when": "success",
+                    "content": runbook_document,
+                },
+            ],
             "documentation_targets": [
                 "docs/design.md",
                 "docs/runbook.md",
@@ -86,7 +102,7 @@ class DocumentationAgent(BaseAgent):
         return AgentResult.success(
             "設計文書と運用向けドキュメントの草案を生成した。",
             outputs=outputs,
-            artifacts=["docs/design.md", "docs/runbook.md"],
+            artifacts=outputs["documentation_targets"],
             next_actions=[
                 "docs/design.md と docs/runbook.md を保存する",
                 "implementation agent に設計文書を渡す",
@@ -98,6 +114,7 @@ class DocumentationAgent(BaseAgent):
                 "open_question_count": len(open_questions),
                 "resolved_decision_count": len(resolved_decisions),
                 "task_breakdown_count": len(task_breakdown),
+                "documentation_artifact_count": len(outputs["documentation_artifacts"]),
             },
         )
 

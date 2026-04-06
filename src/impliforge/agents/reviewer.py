@@ -43,6 +43,20 @@ class ReviewAgent(BaseAgent):
         code_change_slices = self._normalize_code_change_slices(
             implementation.get("code_change_slices")
         )
+        test_plan_open_questions = self._normalize_list(test_plan.get("open_questions"))
+        test_plan_unresolved_concerns = self._normalize_list(
+            test_plan.get("unresolved_concerns")
+        )
+        test_results_open_questions = self._normalize_list(
+            test_results.get("open_questions")
+        )
+        test_results_unresolved_concerns = self._normalize_list(
+            test_results.get("unresolved_concerns")
+        )
+        acceptance_coverage = self._normalize_acceptance_coverage(
+            test_results.get("acceptance_coverage")
+            or test_plan.get("acceptance_coverage")
+        )
 
         findings = self._build_findings(
             acceptance_criteria=acceptance_criteria,
@@ -55,6 +69,11 @@ class ReviewAgent(BaseAgent):
             code_change_slices=code_change_slices,
             test_plan=test_plan,
             test_results=test_results,
+            acceptance_coverage=acceptance_coverage,
+            test_plan_open_questions=test_plan_open_questions,
+            test_plan_unresolved_concerns=test_plan_unresolved_concerns,
+            test_results_open_questions=test_results_open_questions,
+            test_results_unresolved_concerns=test_results_unresolved_concerns,
         )
         recommendations = self._build_recommendations(
             open_questions=open_questions,
@@ -64,6 +83,11 @@ class ReviewAgent(BaseAgent):
             code_change_slices=code_change_slices,
             test_plan=test_plan,
             test_results=test_results,
+            acceptance_coverage=acceptance_coverage,
+            test_plan_open_questions=test_plan_open_questions,
+            test_plan_unresolved_concerns=test_plan_unresolved_concerns,
+            test_results_open_questions=test_results_open_questions,
+            test_results_unresolved_concerns=test_results_unresolved_concerns,
         )
         severity = self._determine_severity(findings)
         unresolved_issues = [
@@ -71,6 +95,13 @@ class ReviewAgent(BaseAgent):
             for finding in findings
             if finding.get("status") in {"warning", "needs_follow_up"}
         ]
+        propagated_open_questions = []
+        for item in (
+            open_questions + test_plan_open_questions + test_results_open_questions
+        ):
+            if item and item not in propagated_open_questions:
+                propagated_open_questions.append(item)
+
         fix_loop_required = severity in {"warning", "needs_follow_up"}
         fix_targets = self._build_fix_targets(
             findings=findings,
@@ -80,9 +111,9 @@ class ReviewAgent(BaseAgent):
         risks = []
         if unresolved_issues:
             risks.append("レビューで未解決事項が残っているため、実装完了判定は保留")
-        if open_questions and not resolved_decisions:
+        if propagated_open_questions and not resolved_decisions:
             risks.append(
-                "要件上の open questions が残っており、対応方針も未確定のため、レビュー結果は暫定"
+                "要件上またはテスト出力上の open questions が残っており、対応方針も未確定のため、レビュー結果は暫定"
             )
         if fix_loop_required:
             risks.append("warning 以上のレビュー結果のため、fix loop が必要")
@@ -93,12 +124,17 @@ class ReviewAgent(BaseAgent):
             recommendations=recommendations,
             acceptance_criteria=acceptance_criteria,
             constraints=constraints,
-            open_questions=open_questions,
+            open_questions=propagated_open_questions,
             resolved_decisions=resolved_decisions,
             risks=risks,
             copilot_response=copilot_response,
             fix_loop_required=fix_loop_required,
             fix_targets=fix_targets,
+            acceptance_coverage=acceptance_coverage,
+            unresolved_concerns=self._merge_distinct_items(
+                test_plan_unresolved_concerns,
+                test_results_unresolved_concerns,
+            ),
         )
 
         return AgentResult.success(
@@ -113,8 +149,14 @@ class ReviewAgent(BaseAgent):
                     "unresolved_issues": unresolved_issues,
                     "fix_loop_required": fix_loop_required,
                     "fix_targets": fix_targets,
+                    "acceptance_coverage": acceptance_coverage,
+                    "open_questions": propagated_open_questions,
+                    "unresolved_concerns": self._merge_distinct_items(
+                        test_plan_unresolved_concerns,
+                        test_results_unresolved_concerns,
+                    ),
                 },
-                "open_questions": open_questions,
+                "open_questions": propagated_open_questions,
                 "resolved_decisions": resolved_decisions,
             },
             artifacts=["docs/review-report.md"],
@@ -127,6 +169,7 @@ class ReviewAgent(BaseAgent):
                 "unresolved_issue_count": len(unresolved_issues),
                 "recommendation_count": len(recommendations),
                 "fix_target_count": len(fix_targets),
+                "acceptance_coverage_count": len(acceptance_coverage),
             },
         )
 
@@ -143,6 +186,11 @@ class ReviewAgent(BaseAgent):
         code_change_slices: list[dict[str, Any]],
         test_plan: dict[str, Any],
         test_results: dict[str, Any],
+        acceptance_coverage: list[dict[str, Any]],
+        test_plan_open_questions: list[str],
+        test_plan_unresolved_concerns: list[str],
+        test_results_open_questions: list[str],
+        test_results_unresolved_concerns: list[str],
     ) -> list[dict[str, str]]:
         findings: list[dict[str, str]] = []
 
@@ -236,7 +284,14 @@ class ReviewAgent(BaseAgent):
                 }
             )
 
-        if open_questions and not resolved_decisions:
+        propagated_open_questions = []
+        for item in (
+            open_questions + test_plan_open_questions + test_results_open_questions
+        ):
+            if item and item not in propagated_open_questions:
+                propagated_open_questions.append(item)
+
+        if propagated_open_questions and not resolved_decisions:
             findings.append(
                 {
                     "status": "needs_follow_up",
@@ -281,6 +336,50 @@ class ReviewAgent(BaseAgent):
                 }
             )
 
+        if acceptance_criteria:
+            uncovered = [
+                item
+                for item in acceptance_coverage
+                if str(item.get("coverage_status", "")).strip()
+                not in {"covered", "provisionally_covered"}
+            ]
+            if uncovered:
+                findings.append(
+                    {
+                        "status": "needs_follow_up",
+                        "summary": "acceptance criteria と test coverage の対応に未解決項目がある。",
+                    }
+                )
+            else:
+                findings.append(
+                    {
+                        "status": "ok",
+                        "summary": "acceptance criteria と test coverage の対応が確認できる。",
+                    }
+                )
+        else:
+            findings.append(
+                {
+                    "status": "warning",
+                    "summary": "acceptance coverage を評価する前提となる acceptance criteria が不足している。",
+                }
+            )
+
+        if test_results_unresolved_concerns or test_plan_unresolved_concerns:
+            findings.append(
+                {
+                    "status": "needs_follow_up",
+                    "summary": "テスト計画またはテスト結果に unresolved concerns が残っている。",
+                }
+            )
+        else:
+            findings.append(
+                {
+                    "status": "ok",
+                    "summary": "テスト計画とテスト結果の unresolved concerns は解消済み、または記録されていない。",
+                }
+            )
+
         test_status = str(test_results.get("status", "")).strip()
         if test_status == "provisional_passed":
             findings.append(
@@ -316,10 +415,22 @@ class ReviewAgent(BaseAgent):
         code_change_slices: list[dict[str, Any]],
         test_plan: dict[str, Any],
         test_results: dict[str, Any],
+        acceptance_coverage: list[dict[str, Any]],
+        test_plan_open_questions: list[str],
+        test_plan_unresolved_concerns: list[str],
+        test_results_open_questions: list[str],
+        test_results_unresolved_concerns: list[str],
     ) -> list[str]:
         recommendations: list[str] = []
 
-        if open_questions and not resolved_decisions:
+        propagated_open_questions = []
+        for item in (
+            open_questions + test_plan_open_questions + test_results_open_questions
+        ):
+            if item and item not in propagated_open_questions:
+                propagated_open_questions.append(item)
+
+        if propagated_open_questions and not resolved_decisions:
             recommendations.append("open questions を解消してから実コード変更に進む")
         elif resolved_decisions:
             recommendations.append(
@@ -345,6 +456,22 @@ class ReviewAgent(BaseAgent):
         if not test_plan.get("test_cases"):
             recommendations.append(
                 "test_plan に具体的な test cases を追加して検証観点を補強する"
+            )
+
+        uncovered = [
+            item
+            for item in acceptance_coverage
+            if str(item.get("coverage_status", "")).strip()
+            not in {"covered", "provisionally_covered"}
+        ]
+        if uncovered:
+            recommendations.append(
+                "acceptance criteria ごとの coverage を補強し、test_plan と test_results の対応を明示する"
+            )
+
+        if test_plan_unresolved_concerns or test_results_unresolved_concerns:
+            recommendations.append(
+                "test_plan / test_results の unresolved concerns を fix loop に送り、再確認する"
             )
 
         test_status = str(test_results.get("status", "")).strip()
@@ -374,6 +501,8 @@ class ReviewAgent(BaseAgent):
         copilot_response: str,
         fix_loop_required: bool,
         fix_targets: list[dict[str, str]],
+        acceptance_coverage: list[dict[str, Any]],
+        unresolved_concerns: list[str],
     ) -> str:
         lines: list[str] = [
             "# Review Report",
@@ -405,6 +534,13 @@ class ReviewAgent(BaseAgent):
             ]
         )
         lines.extend(self._render_bullets(constraints))
+        lines.extend(
+            [
+                "",
+                "## Acceptance Coverage",
+            ]
+        )
+        lines.extend(self._render_acceptance_coverage(acceptance_coverage))
         if resolved_decisions:
             lines.extend(
                 [
@@ -421,6 +557,13 @@ class ReviewAgent(BaseAgent):
                 ]
             )
             lines.extend(self._render_bullets(open_questions))
+        lines.extend(
+            [
+                "",
+                "## Unresolved Concerns",
+            ]
+        )
+        lines.extend(self._render_bullets(unresolved_concerns))
         lines.extend(
             [
                 "",
@@ -532,10 +675,54 @@ class ReviewAgent(BaseAgent):
             return ["- none"]
         return [f"- {item}" for item in items]
 
+    def _render_acceptance_coverage(self, items: list[dict[str, Any]]) -> list[str]:
+        if not items:
+            return ["- none"]
+
+        lines: list[str] = []
+        for item in items:
+            criterion = str(item.get("acceptance_criterion", "")).strip() or "TBD"
+            coverage_status = str(item.get("coverage_status", "")).strip() or "unknown"
+            covered_by = self._normalize_list(item.get("covered_by"))
+            lines.append(f"- {criterion} [{coverage_status}]")
+            lines.append(
+                f"  - covered_by: {', '.join(covered_by) if covered_by else 'none'}"
+            )
+        return lines
+
     def _normalize_list(self, value: Any) -> list[str]:
         if not isinstance(value, list):
             return []
         return [str(item).strip() for item in value if str(item).strip()]
+
+    def _merge_distinct_items(self, *groups: list[str]) -> list[str]:
+        merged: list[str] = []
+        for group in groups:
+            for item in group:
+                if item and item not in merged:
+                    merged.append(item)
+        return merged
+
+    def _normalize_acceptance_coverage(self, value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+
+        normalized: list[dict[str, Any]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            criterion = str(item.get("acceptance_criterion", "")).strip()
+            if not criterion:
+                continue
+            normalized.append(
+                {
+                    "acceptance_criterion": criterion,
+                    "covered_by": self._normalize_list(item.get("covered_by")),
+                    "coverage_status": str(item.get("coverage_status", "")).strip()
+                    or "unknown",
+                }
+            )
+        return normalized
 
     def _normalize_task_breakdown(self, value: Any) -> list[dict[str, Any]]:
         if not isinstance(value, list):

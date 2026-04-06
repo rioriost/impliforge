@@ -41,6 +41,13 @@ class TestExecutionAgent(BaseAgent):
         test_cases = self._normalize_dict_list(test_plan.get("test_cases"))
         validation_steps = self._normalize_list(test_plan.get("validation_steps"))
         plan_phases = self._normalize_list(plan.get("phases"))
+        acceptance_coverage = self._normalize_acceptance_coverage(
+            test_plan.get("acceptance_coverage")
+        )
+        plan_open_questions = self._normalize_list(test_plan.get("open_questions"))
+        plan_unresolved_concerns = self._normalize_list(
+            test_plan.get("unresolved_concerns")
+        )
         failure_summary = self._build_failure_summary(execution_artifacts)
         log_summary = self._build_log_summary(execution_artifacts)
 
@@ -49,19 +56,38 @@ class TestExecutionAgent(BaseAgent):
             validation_steps=validation_steps,
             code_change_slices=code_change_slices,
         )
+        acceptance_coverage = self._build_acceptance_coverage(
+            acceptance_criteria=acceptance_criteria,
+            existing_coverage=acceptance_coverage,
+            executed_checks=executed_checks,
+        )
+        unresolved_concerns = self._build_unresolved_concerns(
+            open_questions=open_questions,
+            resolved_decisions=resolved_decisions,
+            plan_open_questions=plan_open_questions,
+            plan_unresolved_concerns=plan_unresolved_concerns,
+            acceptance_coverage=acceptance_coverage,
+            failure_summary=failure_summary,
+        )
+        status = self._determine_status(
+            failure_summary=failure_summary,
+            unresolved_concerns=unresolved_concerns,
+        )
         summary = self._build_summary(
             executed_checks=executed_checks,
             open_questions=open_questions,
             resolved_decisions=resolved_decisions,
             failure_summary=failure_summary,
+            unresolved_concerns=unresolved_concerns,
         )
         test_results_document = self._build_test_results_document(
             objective=objective,
-            acceptance_criteria=acceptance_criteria,
+            acceptance_coverage=acceptance_coverage,
             plan_phases=plan_phases,
             executed_checks=executed_checks,
             open_questions=open_questions,
             resolved_decisions=resolved_decisions,
+            unresolved_concerns=unresolved_concerns,
             failure_summary=failure_summary,
             log_summary=log_summary,
             copilot_response=copilot_response,
@@ -69,12 +95,15 @@ class TestExecutionAgent(BaseAgent):
 
         outputs = {
             "test_results": {
+                "schema_version": "test_results.v2",
                 "summary": summary,
-                "status": "failed" if failure_summary else "provisional_passed",
+                "status": status,
                 "executed_checks": executed_checks,
                 "open_questions": open_questions,
                 "resolved_decisions": resolved_decisions,
                 "acceptance_criteria": acceptance_criteria,
+                "acceptance_coverage": acceptance_coverage,
+                "unresolved_concerns": unresolved_concerns,
                 "failure_summary": failure_summary,
                 "log_summary": log_summary,
             },
@@ -102,6 +131,10 @@ class TestExecutionAgent(BaseAgent):
             risks.append(
                 "テスト失敗サマリが記録されているため、fix loop または再実行による解消確認が必要"
             )
+        if unresolved_concerns:
+            risks.append(
+                "acceptance coverage または未解決事項に未確定要素があり、review での確認が必要"
+            )
 
         return AgentResult.success(
             "テスト実行結果の草案を生成し、検証状況を整理した。",
@@ -115,9 +148,11 @@ class TestExecutionAgent(BaseAgent):
             risks=risks,
             metrics={
                 "acceptance_criteria_count": len(acceptance_criteria),
+                "acceptance_coverage_count": len(acceptance_coverage),
                 "test_case_count": len(test_cases),
                 "executed_check_count": len(executed_checks),
                 "open_question_count": len(open_questions),
+                "unresolved_concern_count": len(unresolved_concerns),
             },
         )
 
@@ -189,6 +224,7 @@ class TestExecutionAgent(BaseAgent):
         open_questions: list[str],
         resolved_decisions: list[str],
         failure_summary: list[dict[str, str]],
+        unresolved_concerns: list[str],
     ) -> str:
         passed_count = sum(
             1 for item in executed_checks if str(item.get("status")) == "passed"
@@ -199,6 +235,12 @@ class TestExecutionAgent(BaseAgent):
             return (
                 f"{passed_count}/{total_count} checks were recorded, "
                 f"with {len(failure_summary)} failure summaries requiring follow-up."
+            )
+
+        if unresolved_concerns:
+            return (
+                f"{passed_count}/{total_count} checks were provisionally passed, "
+                f"but {len(unresolved_concerns)} unresolved concerns remain before final validation."
             )
 
         if open_questions and not resolved_decisions:
@@ -213,11 +255,12 @@ class TestExecutionAgent(BaseAgent):
         self,
         *,
         objective: str,
-        acceptance_criteria: list[str],
+        acceptance_coverage: list[dict[str, Any]],
         plan_phases: list[str],
         executed_checks: list[dict[str, Any]],
         open_questions: list[str],
         resolved_decisions: list[str],
+        unresolved_concerns: list[str],
         failure_summary: list[dict[str, str]],
         log_summary: list[str],
         copilot_response: str,
@@ -230,7 +273,7 @@ class TestExecutionAgent(BaseAgent):
             "",
             "## Acceptance Criteria Coverage",
         ]
-        lines.extend(self._render_bullets(acceptance_criteria))
+        lines.extend(self._render_acceptance_coverage(acceptance_coverage))
         lines.extend(
             [
                 "",
@@ -280,6 +323,13 @@ class TestExecutionAgent(BaseAgent):
         lines.extend(
             [
                 "",
+                "## Unresolved Concerns",
+            ]
+        )
+        lines.extend(self._render_bullets(unresolved_concerns))
+        lines.extend(
+            [
+                "",
                 "## Copilot Draft Notes",
                 copilot_response or "No additional Copilot draft content was provided.",
             ]
@@ -305,6 +355,21 @@ class TestExecutionAgent(BaseAgent):
         if not items:
             return ["- none"]
         return [f"- {item}" for item in items]
+
+    def _render_acceptance_coverage(self, items: list[dict[str, Any]]) -> list[str]:
+        if not items:
+            return ["- none"]
+
+        lines: list[str] = []
+        for item in items:
+            criterion = str(item.get("acceptance_criterion", "")).strip() or "TBD"
+            coverage_status = str(item.get("coverage_status", "")).strip() or "unknown"
+            covered_by = self._normalize_list(item.get("covered_by"))
+            lines.append(f"- {criterion} [{coverage_status}]")
+            lines.append(
+                f"  - covered_by: {', '.join(covered_by) if covered_by else 'none'}"
+            )
+        return lines
 
     def _render_failure_summary(self, items: list[dict[str, str]]) -> list[str]:
         if not items:
@@ -359,6 +424,133 @@ class TestExecutionAgent(BaseAgent):
 
     def _build_log_summary(self, execution_artifacts: dict[str, Any]) -> list[str]:
         return self._normalize_list(execution_artifacts.get("log_summary"))
+
+    def _build_acceptance_coverage(
+        self,
+        *,
+        acceptance_criteria: list[str],
+        existing_coverage: list[dict[str, Any]],
+        executed_checks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        coverage_by_criterion: dict[str, dict[str, Any]] = {}
+
+        for item in existing_coverage:
+            criterion = str(item.get("acceptance_criterion", "")).strip()
+            if not criterion:
+                continue
+            coverage_by_criterion[criterion] = {
+                "acceptance_criterion": criterion,
+                "covered_by": self._normalize_list(item.get("covered_by")),
+                "coverage_status": str(item.get("coverage_status", "")).strip()
+                or "unknown",
+            }
+
+        for criterion in acceptance_criteria:
+            if criterion not in coverage_by_criterion:
+                coverage_by_criterion[criterion] = {
+                    "acceptance_criterion": criterion,
+                    "covered_by": [],
+                    "coverage_status": "planned_gap",
+                }
+
+        executed_check_ids = [
+            str(item.get("check_id", "")).strip()
+            for item in executed_checks
+            if str(item.get("check_id", "")).strip()
+        ]
+
+        for criterion in acceptance_criteria:
+            item = coverage_by_criterion[criterion]
+            covered_by = self._normalize_list(item.get("covered_by"))
+            if covered_by:
+                item["coverage_status"] = "covered"
+                continue
+            if executed_check_ids:
+                item["coverage_status"] = "provisionally_covered"
+                item["covered_by"] = executed_check_ids
+            else:
+                item["coverage_status"] = "planned_gap"
+
+        return [coverage_by_criterion[criterion] for criterion in acceptance_criteria]
+
+    def _build_unresolved_concerns(
+        self,
+        *,
+        open_questions: list[str],
+        resolved_decisions: list[str],
+        plan_open_questions: list[str],
+        plan_unresolved_concerns: list[str],
+        acceptance_coverage: list[dict[str, Any]],
+        failure_summary: list[dict[str, str]],
+    ) -> list[str]:
+        concerns: list[str] = []
+        open_question_concerns: list[str] = []
+
+        if open_questions and not resolved_decisions:
+            for question in open_questions:
+                open_question_concerns.append(
+                    f"Open question remains unresolved: {question}"
+                )
+
+        for question in plan_open_questions:
+            concern = f"Open question remains unresolved: {question}"
+            if concern not in open_question_concerns:
+                open_question_concerns.append(concern)
+
+        concerns.extend(open_question_concerns)
+
+        for concern in plan_unresolved_concerns:
+            if concern not in concerns:
+                concerns.append(concern)
+
+        for item in acceptance_coverage:
+            coverage_status = str(item.get("coverage_status", "")).strip()
+            if coverage_status in {"covered", "provisionally_covered"}:
+                continue
+            criterion = str(item.get("acceptance_criterion", "")).strip() or "TBD"
+            concerns.append(
+                f"Acceptance criterion lacks explicit execution coverage: {criterion}"
+            )
+
+        for item in failure_summary:
+            summary = str(item.get("summary", "")).strip()
+            if summary:
+                concerns.append(f"Execution follow-up required: {summary}")
+
+        return concerns
+
+    def _determine_status(
+        self,
+        *,
+        failure_summary: list[dict[str, str]],
+        unresolved_concerns: list[str],
+    ) -> str:
+        if failure_summary:
+            return "failed"
+        if unresolved_concerns:
+            return "provisional_passed"
+        return "provisional_passed"
+
+    def _normalize_acceptance_coverage(self, value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+
+        normalized: list[dict[str, Any]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            criterion = str(item.get("acceptance_criterion", "")).strip()
+            if not criterion:
+                continue
+            normalized.append(
+                {
+                    "acceptance_criterion": criterion,
+                    "covered_by": self._normalize_list(item.get("covered_by")),
+                    "coverage_status": str(item.get("coverage_status", "")).strip()
+                    or "unknown",
+                }
+            )
+        return normalized
 
     def _normalize_dict_list(self, value: Any) -> list[dict[str, Any]]:
         if not isinstance(value, list):

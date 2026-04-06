@@ -32,7 +32,31 @@ class WorkflowArtifactWriter:
         state: WorkflowState,
         result: AgentResult,
     ) -> None:
-        """Write generated design and runbook documents to `docs/`."""
+        """Write generated documentation artifacts to `docs/`."""
+        documentation_artifacts = self._normalize_dict_list(
+            result.outputs.get("documentation_artifacts")
+        )
+
+        if documentation_artifacts:
+            for artifact in documentation_artifacts:
+                target_path = str(artifact.get("path", "")).strip()
+                content = artifact.get("content")
+                persist_when = str(artifact.get("persist_when", "success")).strip()
+
+                if persist_when not in {"success", "always"}:
+                    continue
+                if not target_path.startswith("docs/"):
+                    continue
+                if not isinstance(content, str) or not content.strip():
+                    continue
+
+                self._write_doc(
+                    state=state,
+                    target_name=Path(target_path).name,
+                    content=content,
+                )
+            return
+
         design_document = result.outputs.get("design_document")
         runbook_document = result.outputs.get("runbook_document")
 
@@ -59,6 +83,29 @@ class WorkflowArtifactWriter:
         target_name: str,
     ) -> None:
         """Write a single text output from an agent result to `docs/`."""
+        artifact = self._find_output_artifact(
+            result=result,
+            output_key=output_key,
+            target_name=target_name,
+        )
+        if artifact is not None:
+            content = artifact.get("content")
+            target_path = str(artifact.get("path", "")).strip()
+            persist_when = str(artifact.get("persist_when", "success")).strip()
+
+            if (
+                persist_when in {"success", "always"}
+                and target_path.startswith("docs/")
+                and isinstance(content, str)
+                and content.strip()
+            ):
+                self._write_doc(
+                    state=state,
+                    target_name=Path(target_path).name,
+                    content=content,
+                )
+                return
+
         content = result.outputs.get(output_key)
         if not isinstance(content, str) or not content.strip():
             return
@@ -131,15 +178,17 @@ class WorkflowArtifactWriter:
             review_result=review_result,
             fix_result=fix_result,
         )
-        final_summary_path = self.docs_dir / "final-summary.md"
-        final_summary_path.write_text(final_summary, encoding="utf-8")
+        final_summary_path = self._write_doc(
+            state=state,
+            target_name="final-summary.md",
+            content=final_summary,
+        )
 
         for path in (
             workflow_state_path,
             workflow_details_path,
             session_snapshot_path,
             run_summary_path,
-            final_summary_path,
         ):
             self._record_artifact(state, path)
 
@@ -196,6 +245,8 @@ class WorkflowArtifactWriter:
         """Build the persisted workflow details payload."""
         return {
             "workflow": state.to_dict(),
+            "artifacts": list(state.artifacts),
+            "changed_files": list(state.changed_files),
             "requirements_result": self.result_to_dict(requirements_result),
             "planning_result": self.result_to_dict(planning_result),
             "documentation_result": self.result_to_dict(documentation_result),
@@ -610,11 +661,23 @@ class WorkflowArtifactWriter:
             if not failure_cause:
                 failure_cause = "No failure cause provided."
 
+        outputs = dict(result.outputs)
+        output_artifacts = self._normalize_output_artifacts(outputs)
+        if output_artifacts:
+            outputs["output_artifacts"] = output_artifacts
+
+        artifacts = self._normalize_list(result.artifacts)
+        if output_artifacts:
+            artifacts = self._merge_unique_strings(
+                artifacts,
+                [artifact["path"] for artifact in output_artifacts],
+            )
+
         return {
             "status": result.status,
             "summary": summary,
-            "outputs": result.outputs,
-            "artifacts": self._normalize_list(result.artifacts),
+            "outputs": outputs,
+            "artifacts": artifacts,
             "next_actions": self._normalize_list(result.next_actions),
             "risks": self._normalize_list(result.risks),
             "metrics": dict(result.metrics),
@@ -791,6 +854,78 @@ class WorkflowArtifactWriter:
         if not isinstance(value, list):
             return []
         return [item for item in value if isinstance(item, dict)]
+
+    def _normalize_output_artifacts(
+        self, outputs: dict[str, Any]
+    ) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        seen_paths: set[str] = set()
+
+        for artifact in self._normalize_dict_list(
+            outputs.get("documentation_artifacts")
+        ):
+            path = str(artifact.get("path", "")).strip()
+            output_key = str(artifact.get("output_key", "")).strip()
+            persist_when = (
+                str(artifact.get("persist_when", "success")).strip() or "success"
+            )
+            content = artifact.get("content")
+
+            if not path or path in seen_paths:
+                continue
+            if not output_key:
+                continue
+            if not isinstance(content, str) or not content.strip():
+                continue
+
+            normalized.append(
+                {
+                    "path": path,
+                    "output_key": output_key,
+                    "persist_when": persist_when,
+                }
+            )
+            seen_paths.add(path)
+
+        fallback_pairs = [
+            ("design_document", "docs/design.md"),
+            ("runbook_document", "docs/runbook.md"),
+            ("test_plan_document", "docs/test-plan.md"),
+            ("test_results_document", "docs/test-results.md"),
+            ("review_report", "docs/review-report.md"),
+            ("fix_report", "docs/fix-report.md"),
+        ]
+        for output_key, path in fallback_pairs:
+            content = outputs.get(output_key)
+            if path in seen_paths:
+                continue
+            if not isinstance(content, str) or not content.strip():
+                continue
+            normalized.append(
+                {
+                    "path": path,
+                    "output_key": output_key,
+                    "persist_when": "success",
+                }
+            )
+            seen_paths.add(path)
+
+        return normalized
+
+    def _find_output_artifact(
+        self,
+        *,
+        result: AgentResult,
+        output_key: str,
+        target_name: str,
+    ) -> dict[str, Any] | None:
+        target_path = f"docs/{target_name}"
+        for artifact in self._normalize_output_artifacts(dict(result.outputs)):
+            if artifact.get("output_key") == output_key:
+                return artifact
+            if artifact.get("path") == target_path:
+                return artifact
+        return None
 
     def _collect_test_targets(
         self,

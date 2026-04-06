@@ -81,6 +81,9 @@ class CodeEditRequest:
     kind: CodeEditKind
     reason: str
     risk_flags: tuple[CodeEditRiskFlag, ...] = ()
+    proposal_id: str = ""
+    approval_policy: str = ""
+    consumability: str = ""
     content: str | None = None
     marker: str | None = None
     begin_marker: str | None = None
@@ -193,6 +196,28 @@ class CodeEditingPolicy:
             for prefix in self.protected_prefixes
         )
 
+    def approval_policy_allows(self, approval_policy: str, relative_path: str) -> bool:
+        if not approval_policy:
+            return True
+
+        if approval_policy == "src_impliforge_structured_only":
+            return relative_path == "src/impliforge" or relative_path.startswith(
+                "src/impliforge/"
+            )
+
+        return False
+
+    def supports_consumability(self, consumability: str, relative_path: str) -> bool:
+        if not consumability:
+            return True
+
+        if consumability == "structured_code_editor":
+            return relative_path == "src/impliforge" or relative_path.startswith(
+                "src/impliforge/"
+            )
+
+        return False
+
 
 class CodeEditingError(RuntimeError):
     """Raised when a code edit request is invalid or unsafe."""
@@ -219,7 +244,7 @@ class StructuredCodeEditor:
         relative_path = self._validate_relative_path(request.normalized_relative_path())
         absolute_path = self._resolve_path(relative_path)
 
-        policy_error = self._check_policy(relative_path, absolute_path)
+        policy_error = self._check_policy(request, relative_path, absolute_path)
         if policy_error is not None:
             return CodeEditResult.failure(
                 kind=request.kind,
@@ -423,7 +448,12 @@ class StructuredCodeEditor:
             return content
         return "\n" + content
 
-    def _check_policy(self, relative_path: str, absolute_path: Path) -> str | None:
+    def _check_policy(
+        self,
+        request: CodeEditRequest,
+        relative_path: str,
+        absolute_path: Path,
+    ) -> str | None:
         if not self.policy.is_allowed_path(relative_path):
             return (
                 "Structured code edit denied: target is outside allowed prefixes "
@@ -432,6 +462,20 @@ class StructuredCodeEditor:
 
         if self.policy.is_protected_path(relative_path):
             return "Structured code edit denied: target is under a protected prefix."
+
+        if not self.policy.approval_policy_allows(
+            request.approval_policy, relative_path
+        ):
+            return (
+                "Structured code edit denied: proposal approval policy does not allow "
+                f"target {relative_path}."
+            )
+
+        if not self.policy.supports_consumability(request.consumability, relative_path):
+            return (
+                "Structured code edit denied: proposal consumability is not supported "
+                f"for target {relative_path}."
+            )
 
         if not absolute_path.exists() and not self.policy.allow_create:
             return "Structured code edit denied: creating new source files is disabled."
@@ -503,6 +547,18 @@ def has_code_edit_risk_flag(request: CodeEditRequest, *flags: CodeEditRiskFlag) 
     """Return whether the request carries any of the given structured risk flags."""
     request_flags = set(request.risk_flags)
     return any(flag in request_flags for flag in flags)
+
+
+def proposal_policy_requires_explicit_approval(approval_policy: str) -> bool:
+    """Return whether a proposal policy should require explicit approval."""
+    return approval_policy in {
+        "src_impliforge_structured_only",
+    }
+
+
+def proposal_consumability_is_structured(consumability: str) -> bool:
+    """Return whether a proposal consumability expects structured editing."""
+    return consumability == "structured_code_editor"
 
 
 def approve_src_impliforge_only(

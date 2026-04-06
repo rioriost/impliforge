@@ -63,6 +63,8 @@ class EditRiskFlag(StrEnum):
     ENVIRONMENT_CHANGE = "environment_change"
     SECURITY_IMPACT = "security_impact"
     SECRET_MATERIAL = "secret_material"
+    UNSUPPORTED_CONSUMABILITY = "unsupported_consumability"
+    POLICY_MISMATCH = "policy_mismatch"
 
 
 @dataclass(slots=True)
@@ -74,6 +76,9 @@ class EditRequest:
     content: str | None = None
     reason: str = ""
     risk_flags: tuple[EditRiskFlag, ...] = ()
+    proposal_id: str = ""
+    approval_policy: str = ""
+    consumability: str = ""
     create_parents: bool = True
     overwrite: bool = True
 
@@ -195,6 +200,36 @@ class EditorPolicy:
 
     def requires_src_approval(self, relative_path: str) -> bool:
         return relative_path == "src" or relative_path.startswith("src/")
+
+    def approval_policy_allows(self, approval_policy: str, relative_path: str) -> bool:
+        if not approval_policy:
+            return True
+
+        if approval_policy == "docs_artifacts_only":
+            return relative_path.startswith("docs/") or relative_path.startswith(
+                "artifacts/"
+            )
+
+        if approval_policy == "src_impliforge_structured_only":
+            return relative_path == "src/impliforge" or relative_path.startswith(
+                "src/impliforge/"
+            )
+
+        return False
+
+    def supports_consumability(self, consumability: str, relative_path: str) -> bool:
+        if not consumability:
+            return True
+
+        if consumability == "safe_editor":
+            return self.is_allowed_root(relative_path)
+
+        if consumability == "structured_code_editor":
+            return relative_path == "src/impliforge" or relative_path.startswith(
+                "src/impliforge/"
+            )
+
+        return False
 
     def _parts(self, relative_path: str) -> tuple[str, ...]:
         return tuple(part for part in relative_path.split("/") if part)
@@ -484,6 +519,20 @@ class SafeEditor:
                 f"{', '.join(self.policy.protected_roots)}."
             )
 
+        if not self.policy.approval_policy_allows(
+            request.approval_policy, relative_path
+        ):
+            return (
+                "Edit denied: proposal approval policy does not allow target "
+                f"{relative_path}."
+            )
+
+        if not self.policy.supports_consumability(request.consumability, relative_path):
+            return (
+                "Edit denied: proposal consumability is not supported for target "
+                f"{relative_path}."
+            )
+
         return None
 
     def _check_approval(
@@ -571,6 +620,19 @@ def has_edit_risk_flag(request: EditRequest, *flags: EditRiskFlag) -> bool:
     """Return whether the request carries any of the given structured risk flags."""
     request_flags = set(request.risk_flags)
     return any(flag in request_flags for flag in flags)
+
+
+def proposal_policy_requires_explicit_approval(approval_policy: str) -> bool:
+    """Return whether a proposal policy should require explicit approval."""
+    return approval_policy in {
+        "docs_artifacts_only",
+        "src_impliforge_structured_only",
+    }
+
+
+def proposal_consumability_is_structured(consumability: str) -> bool:
+    """Return whether a proposal consumability expects structured editing."""
+    return consumability == "structured_code_editor"
 
 
 def approve_docs_and_artifacts_only(

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -225,129 +225,20 @@ class SkeletonOrchestrator:
         effective_test_execution_result = test_execution_result
         effective_review_result = review_result
         if fix_result is not None:
-            rerun_implementation_outputs = {
-                **implementation_result.outputs,
-                **fix_result.outputs,
-            }
-            effective_implementation_result = AgentResult.success(
-                fix_result.summary,
-                outputs=rerun_implementation_outputs,
-                artifacts=[
-                    *implementation_result.artifacts,
-                    *[
-                        artifact
-                        for artifact in fix_result.artifacts
-                        if artifact not in implementation_result.artifacts
-                    ],
-                ],
-                risks=[
-                    *implementation_result.risks,
-                    *[
-                        risk
-                        for risk in fix_result.risks
-                        if risk not in implementation_result.risks
-                    ],
-                ],
-                next_actions=[
-                    *implementation_result.next_actions,
-                    *[
-                        action
-                        for action in fix_result.next_actions
-                        if action not in implementation_result.next_actions
-                    ],
-                ],
-                metrics={
-                    **implementation_result.metrics,
-                    **fix_result.metrics,
-                },
+            effective_implementation_result = self._merge_agent_results(
+                implementation_result,
+                fix_result,
+                summary=fix_result.summary,
             )
-            rerun_test_execution_task = state.require_task("test_execution")
-            rerun_review_task = state.require_task("review")
-            rerun_test_execution_outputs = rerun_test_execution_task.outputs
-            rerun_review_outputs = rerun_review_task.outputs
-            rerun_test_execution_artifacts = [
-                *test_execution_result.artifacts,
-                *[
-                    artifact
-                    for artifact in rerun_test_execution_outputs.get("artifacts", [])
-                    if artifact not in test_execution_result.artifacts
-                ],
-            ]
-            rerun_test_execution_risks = [
-                *test_execution_result.risks,
-                *[
-                    risk
-                    for risk in rerun_test_execution_outputs.get("risks", [])
-                    if risk not in test_execution_result.risks
-                ],
-            ]
-            rerun_test_execution_next_actions = [
-                *test_execution_result.next_actions,
-                *[
-                    action
-                    for action in rerun_test_execution_outputs.get("next_actions", [])
-                    if action not in test_execution_result.next_actions
-                ],
-            ]
-            rerun_test_execution_metrics = {
-                **test_execution_result.metrics,
-                **(
-                    rerun_test_execution_outputs.get("metrics", {})
-                    if isinstance(rerun_test_execution_outputs.get("metrics"), dict)
-                    else {}
-                ),
-            }
-            effective_test_execution_result = AgentResult.success(
-                rerun_test_execution_task.notes[-1]
-                if rerun_test_execution_task.notes
-                else test_execution_result.summary,
-                outputs=rerun_test_execution_outputs,
-                artifacts=rerun_test_execution_artifacts,
-                risks=rerun_test_execution_risks,
-                next_actions=rerun_test_execution_next_actions,
-                metrics=rerun_test_execution_metrics,
+            effective_test_execution_result = self._result_from_task_state(
+                state=state,
+                task_id="test_execution",
+                fallback_result=test_execution_result,
             )
-            rerun_review_artifacts = [
-                *review_result.artifacts,
-                *[
-                    artifact
-                    for artifact in rerun_review_outputs.get("artifacts", [])
-                    if artifact not in review_result.artifacts
-                ],
-            ]
-            rerun_review_risks = [
-                *review_result.risks,
-                *[
-                    risk
-                    for risk in rerun_review_outputs.get("risks", [])
-                    if risk not in review_result.risks
-                ],
-            ]
-            rerun_review_next_actions = [
-                *review_result.next_actions,
-                *[
-                    action
-                    for action in rerun_review_outputs.get("next_actions", [])
-                    if action not in review_result.next_actions
-                ],
-            ]
-            rerun_review_metrics = {
-                **review_result.metrics,
-                **(
-                    rerun_review_outputs.get("metrics", {})
-                    if isinstance(rerun_review_outputs.get("metrics"), dict)
-                    else {}
-                ),
-            }
-            effective_review_result = AgentResult.success(
-                rerun_review_task.notes[-1]
-                if rerun_review_task.notes
-                else review_result.summary,
-                outputs=rerun_review_outputs,
-                artifacts=rerun_review_artifacts,
-                risks=rerun_review_risks,
-                next_actions=rerun_review_next_actions,
-                metrics=rerun_review_metrics,
+            effective_review_result = self._result_from_task_state(
+                state=state,
+                task_id="review",
+                fallback_result=review_result,
             )
 
         self.edit_phase.apply_safe_edit_phase(
@@ -825,40 +716,10 @@ class SkeletonOrchestrator:
         if not fix_result.is_success:
             return fix_result
 
-        rerun_implementation_result = AgentResult.success(
-            fix_result.summary,
-            outputs={
-                **implementation_result.outputs,
-                **fix_result.outputs,
-            },
-            artifacts=[
-                *implementation_result.artifacts,
-                *[
-                    artifact
-                    for artifact in fix_result.artifacts
-                    if artifact not in implementation_result.artifacts
-                ],
-            ],
-            risks=[
-                *implementation_result.risks,
-                *[
-                    risk
-                    for risk in fix_result.risks
-                    if risk not in implementation_result.risks
-                ],
-            ],
-            next_actions=[
-                *implementation_result.next_actions,
-                *[
-                    action
-                    for action in fix_result.next_actions
-                    if action not in implementation_result.next_actions
-                ],
-            ],
-            metrics={
-                **implementation_result.metrics,
-                **fix_result.metrics,
-            },
+        rerun_implementation_result = self._merge_agent_results(
+            implementation_result,
+            fix_result,
+            summary=fix_result.summary,
         )
 
         rerun_test_execution_result = await self._run_test_execution_phase(
@@ -1023,18 +884,22 @@ class SkeletonOrchestrator:
             routing_payload=routing_payload,
         )
 
+        phase_inputs = build_inputs(routing_payload, copilot_response)
         result = await agent.run(
             AgentTask(
                 name=task.task_id,
                 objective=task.objective,
                 inputs={
-                    **build_inputs(routing_payload, copilot_response),
+                    **phase_inputs,
                     "routing_decision": routing_payload,
                 },
                 metadata={
                     "selected_model": routing_decision.selected_model,
                     "fallback_model": routing_decision.fallback_model,
                     "copilot_dry_run": copilot_response.is_dry_run,
+                    "phase": phase.value,
+                    "task_type": task_type.value,
+                    "input_keys": sorted(phase_inputs.keys()),
                 },
             ),
             state,
@@ -1045,6 +910,22 @@ class SkeletonOrchestrator:
             task_id=task.task_id,
             phase=phase,
             result=result,
+        )
+        state.record_event(
+            "phase_completed",
+            task_id=task.task_id,
+            agent_name=getattr(agent, "agent_name", None),
+            status=result.status,
+            summary=result.summary,
+            details={
+                "phase": phase.value,
+                "task_type": task_type.value,
+                "input_keys": sorted(phase_inputs.keys()),
+                "output_keys": sorted(result.outputs.keys()),
+                "artifact_count": len(result.artifacts),
+                "risk_count": len(result.risks),
+                "next_action_count": len(result.next_actions),
+            },
         )
         return result
 
@@ -1124,12 +1005,42 @@ class SkeletonOrchestrator:
         phase: WorkflowPhase,
         result: AgentResult,
     ) -> None:
+        normalized_summary = (
+            result.summary.strip()
+            if isinstance(result.summary, str) and result.summary.strip()
+            else "No summary provided."
+        )
+        normalized_outputs = (
+            dict(result.outputs) if isinstance(result.outputs, Mapping) else {}
+        )
+        normalized_artifacts = self._normalize_unique_strings(result.artifacts)
+        normalized_risks = self._normalize_unique_strings(result.risks)
+        normalized_open_questions = self._normalize_unique_strings(
+            normalized_outputs.get("open_questions", [])
+            if isinstance(normalized_outputs.get("open_questions"), list)
+            else []
+        )
+        normalized_changed_files = self._normalize_unique_strings(
+            normalized_outputs.get("changed_files", [])
+            if isinstance(normalized_outputs.get("changed_files"), list)
+            else []
+        )
+        normalized_next_actions = self._normalize_unique_strings(result.next_actions)
+
         if result.is_success:
+            success_outputs = self._merge_dicts(
+                state.require_task(task_id).outputs,
+                normalized_outputs,
+            )
+            if normalized_next_actions:
+                success_outputs["next_actions"] = normalized_next_actions
+            if result.metrics:
+                success_outputs["metrics"] = dict(result.metrics)
             state.update_task_status(
                 task_id,
                 TaskStatus.COMPLETED,
-                note=result.summary,
-                outputs=result.outputs,
+                note=normalized_summary,
+                outputs=success_outputs,
             )
             state.set_phase(phase)
         else:
@@ -1144,21 +1055,21 @@ class SkeletonOrchestrator:
                 result.failure_cause.strip()
                 if isinstance(result.failure_cause, str)
                 and result.failure_cause.strip()
-                else result.summary
+                else normalized_summary
             )
-            next_actions = [
-                str(action).strip()
-                for action in result.next_actions
-                if str(action).strip()
-            ]
-            failure_outputs = dict(result.outputs)
+            failure_outputs = self._merge_dicts(
+                state.require_task(task_id).outputs,
+                normalized_outputs,
+            )
             failure_outputs["failure_category"] = failure_category
             failure_outputs["failure_cause"] = failure_cause
-            failure_outputs["next_actions"] = next_actions
+            failure_outputs["next_actions"] = normalized_next_actions
+            if result.metrics:
+                failure_outputs["metrics"] = dict(result.metrics)
             state.update_task_status(
                 task_id,
                 TaskStatus.FAILED,
-                note=result.summary,
+                note=normalized_summary,
                 outputs=failure_outputs,
             )
             state.require_task(task_id).add_note(
@@ -1168,19 +1079,134 @@ class SkeletonOrchestrator:
             state.add_note(
                 f"{task_id} failed: category={failure_category}; cause={failure_cause}"
             )
-            if next_actions:
-                state.add_note(f"{task_id} next actions: {' | '.join(next_actions)}")
+            if normalized_next_actions:
+                state.add_note(
+                    f"{task_id} next actions: {' | '.join(normalized_next_actions)}"
+                )
 
-        for artifact in result.artifacts:
+        for artifact in normalized_artifacts:
             state.add_artifact(artifact)
-        for risk in result.risks:
+        for risk in normalized_risks:
             state.add_risk(risk)
+        for question in normalized_open_questions:
+            state.add_open_question(question)
+        for changed_file in normalized_changed_files:
+            state.add_changed_file(changed_file)
 
-        open_questions = result.outputs.get("open_questions", [])
-        if isinstance(open_questions, list):
-            for question in open_questions:
-                if question:
-                    state.add_open_question(str(question))
+    def _merge_agent_results(
+        self,
+        base_result: AgentResult,
+        override_result: AgentResult,
+        *,
+        summary: str | None = None,
+    ) -> AgentResult:
+        merged_outputs = self._merge_dicts(base_result.outputs, override_result.outputs)
+        merged_artifacts = self._merge_unique_lists(
+            base_result.artifacts,
+            override_result.artifacts,
+        )
+        merged_risks = self._merge_unique_lists(
+            base_result.risks,
+            override_result.risks,
+        )
+        merged_next_actions = self._merge_unique_lists(
+            base_result.next_actions,
+            override_result.next_actions,
+        )
+        merged_metrics = self._merge_dicts(base_result.metrics, override_result.metrics)
+        merged_summary = (
+            summary.strip()
+            if isinstance(summary, str) and summary.strip()
+            else override_result.summary
+            if isinstance(override_result.summary, str)
+            and override_result.summary.strip()
+            else base_result.summary
+        )
+        return AgentResult.success(
+            merged_summary,
+            outputs=merged_outputs,
+            artifacts=merged_artifacts,
+            risks=merged_risks,
+            next_actions=merged_next_actions,
+            metrics=merged_metrics,
+        )
+
+    def _result_from_task_state(
+        self,
+        *,
+        state: WorkflowState,
+        task_id: str,
+        fallback_result: AgentResult,
+    ) -> AgentResult:
+        task = state.require_task(task_id)
+        outputs = self._merge_dicts(fallback_result.outputs, task.outputs)
+        artifacts = self._merge_unique_lists(
+            fallback_result.artifacts,
+            outputs.get("artifacts", [])
+            if isinstance(outputs.get("artifacts"), list)
+            else [],
+        )
+        risks = self._merge_unique_lists(
+            fallback_result.risks,
+            outputs.get("risks", []) if isinstance(outputs.get("risks"), list) else [],
+        )
+        next_actions = self._merge_unique_lists(
+            fallback_result.next_actions,
+            outputs.get("next_actions", [])
+            if isinstance(outputs.get("next_actions"), list)
+            else [],
+        )
+        metrics = self._merge_dicts(
+            fallback_result.metrics,
+            outputs.get("metrics", {})
+            if isinstance(outputs.get("metrics"), Mapping)
+            else {},
+        )
+        summary = task.notes[-1] if task.notes else fallback_result.summary
+        return AgentResult.success(
+            summary,
+            outputs=outputs,
+            artifacts=artifacts,
+            risks=risks,
+            next_actions=next_actions,
+            metrics=metrics,
+        )
+
+    def _merge_unique_lists(
+        self,
+        base_values: Iterable[Any],
+        override_values: Iterable[Any],
+    ) -> list[str]:
+        merged: list[str] = []
+        for value in [*base_values, *override_values]:
+            text = str(value).strip()
+            if text and text not in merged:
+                merged.append(text)
+        return merged
+
+    def _normalize_unique_strings(self, values: Iterable[Any]) -> list[str]:
+        normalized: list[str] = []
+        for value in values:
+            text = str(value).strip()
+            if text and text not in normalized:
+                normalized.append(text)
+        return normalized
+
+    def _merge_dicts(
+        self,
+        base: Mapping[str, Any],
+        override: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        merged = dict(base)
+        for key, value in override.items():
+            existing = merged.get(key)
+            if isinstance(existing, Mapping) and isinstance(value, Mapping):
+                merged[key] = self._merge_dicts(existing, value)
+            elif isinstance(existing, list) and isinstance(value, list):
+                merged[key] = self._merge_unique_lists(existing, value)
+            else:
+                merged[key] = value
+        return merged
 
     def _build_workflow_id(self) -> str:
         from datetime import UTC, datetime

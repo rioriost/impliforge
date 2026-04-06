@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -272,59 +273,103 @@ class Orchestrator:
         task.mark_in_progress(getattr(task, "owner", None))
         state.touch()
 
+        normalized_summary = (
+            result.summary.strip()
+            if isinstance(result.summary, str) and result.summary.strip()
+            else "No summary provided."
+        )
+        normalized_outputs = (
+            dict(result.outputs) if isinstance(result.outputs, Mapping) else {}
+        )
+        normalized_artifacts = self._normalize_unique_strings(result.artifacts)
+        normalized_risks = self._normalize_unique_strings(result.risks)
+        normalized_next_actions = self._normalize_unique_strings(result.next_actions)
+        open_questions = self._normalize_unique_strings(
+            normalized_outputs.get("open_questions", [])
+            if isinstance(normalized_outputs.get("open_questions", []), list)
+            else []
+        )
+        changed_files = self._normalize_unique_strings(
+            normalized_outputs.get("changed_files", [])
+            if isinstance(normalized_outputs.get("changed_files", []), list)
+            else []
+        )
+
         if not result.is_success:
+            failure_reason = normalized_summary
             self.handle_failure(
                 state,
                 step_name=completed_step,
-                reason=result.summary or "unknown failure",
+                reason=failure_reason,
+            )
+            task = state.require_task(completed_step)
+            failure_outputs = dict(normalized_outputs)
+            if normalized_next_actions:
+                failure_outputs["next_actions"] = normalized_next_actions
+            if result.metrics:
+                failure_outputs["metrics"] = dict(result.metrics)
+            task.outputs.update(failure_outputs)
+            for artifact in normalized_artifacts:
+                state.add_artifact(artifact)
+            for risk in normalized_risks:
+                state.add_risk(risk)
+            for question in open_questions:
+                state.add_open_question(question)
+            for changed_file in changed_files:
+                state.add_changed_file(changed_file)
+            state.record_event(
+                "task_completed",
+                task_id=completed_step,
+                status=task.status.value,
+                summary=failure_reason,
+                details={
+                    "phase_after": state.phase.value,
+                    "artifact_count": len(normalized_artifacts),
+                    "risk_count": len(normalized_risks),
+                    "open_question_count": len(open_questions),
+                    "changed_file_count": len(changed_files),
+                    "output_keys": sorted(failure_outputs.keys()),
+                    "next_action_count": len(normalized_next_actions),
+                    "metric_keys": sorted(result.metrics.keys()),
+                    "result_status": result.status,
+                },
             )
             return
 
-        task.mark_completed(outputs=result.outputs)
+        merged_outputs = self._merge_outputs(task.outputs, normalized_outputs)
+        task.mark_completed(outputs=merged_outputs)
         state.touch()
         state.set_phase(phase)
-        state.add_note(result.summary)
-        for risk in result.risks:
-            if risk:
-                state.add_risk(str(risk))
-
-        open_questions = result.outputs.get("open_questions", [])
-        if isinstance(open_questions, list):
-            for question in open_questions:
-                if question:
-                    state.add_open_question(str(question))
-
-        changed_files = result.outputs.get("changed_files", [])
-        if isinstance(changed_files, list):
-            for changed_file in changed_files:
-                if changed_file:
-                    state.add_changed_file(str(changed_file))
-
-        for artifact in result.artifacts:
+        state.add_note(normalized_summary)
+        for risk in normalized_risks:
+            state.add_risk(risk)
+        for question in open_questions:
+            state.add_open_question(question)
+        for changed_file in changed_files:
+            state.add_changed_file(changed_file)
+        for artifact in normalized_artifacts:
             state.add_artifact(artifact)
+
+        if normalized_next_actions:
+            task.outputs["next_actions"] = normalized_next_actions
+        if result.metrics:
+            task.outputs["metrics"] = dict(result.metrics)
 
         state.record_event(
             "task_completed",
             task_id=completed_step,
             status=task.status.value,
-            summary=result.summary,
+            summary=normalized_summary,
             details={
                 "phase_after": phase.value,
-                "artifact_count": len(result.artifacts),
-                "risk_count": len([risk for risk in result.risks if risk]),
-                "open_question_count": len(
-                    [question for question in open_questions if question]
-                )
-                if isinstance(open_questions, list)
-                else 0,
-                "changed_file_count": len(
-                    [changed_file for changed_file in changed_files if changed_file]
-                )
-                if isinstance(changed_files, list)
-                else 0,
-                "output_keys": sorted(result.outputs.keys()),
-                "next_action_count": len(result.next_actions),
+                "artifact_count": len(normalized_artifacts),
+                "risk_count": len(normalized_risks),
+                "open_question_count": len(open_questions),
+                "changed_file_count": len(changed_files),
+                "output_keys": sorted(task.outputs.keys()),
+                "next_action_count": len(normalized_next_actions),
                 "metric_keys": sorted(result.metrics.keys()),
+                "result_status": result.status,
             },
         )
 
@@ -339,6 +384,12 @@ class Orchestrator:
                 skipped_dependencies.append(dependency_id)
 
         finalization_task = state.require_task("finalization")
+        incomplete_tasks = [
+            task.task_id
+            for task in state.tasks
+            if task.task_id != "finalization"
+            and task.status in {TaskStatus.PENDING, TaskStatus.IN_PROGRESS}
+        ]
         blocking_open_questions = bool(state.open_questions)
         blocking_tasks = [
             task.task_id
@@ -346,17 +397,24 @@ class Orchestrator:
             if task.task_id != "finalization"
             and task.status in {TaskStatus.BLOCKED, TaskStatus.FAILED}
         ]
-        acceptance_ready = not blocking_open_questions and not blocking_tasks
+        acceptance_ready = (
+            not blocking_open_questions and not blocking_tasks and not incomplete_tasks
+        )
         failed_checks: list[str] = []
         if blocking_open_questions:
             failed_checks.append("open_questions_resolved")
         if blocking_tasks:
             failed_checks.append("blocking_work_resolved")
+        if incomplete_tasks:
+            failed_checks.append("workflow_execution_completed")
 
         finalization_outputs = {
             "acceptance_gate": {
                 "ready_for_completion": acceptance_ready,
                 "failed_checks": failed_checks,
+                "blocking_open_questions": blocking_open_questions,
+                "blocking_tasks": blocking_tasks,
+                "incomplete_tasks": incomplete_tasks,
             },
             "next_actions": (
                 [
@@ -366,6 +424,7 @@ class Orchestrator:
                 if acceptance_ready
                 else [
                     "Resolve open questions and blocked workflow tasks before declaring completion",
+                    "Complete any remaining in-progress workflow tasks",
                 ]
             ),
         }
@@ -401,8 +460,37 @@ class Orchestrator:
                 "acceptance_ready": acceptance_ready,
                 "blocking_open_questions": blocking_open_questions,
                 "blocking_tasks": blocking_tasks,
+                "incomplete_tasks": incomplete_tasks,
             },
         )
+
+    def _normalize_unique_strings(self, values: Iterable[Any]) -> list[str]:
+        normalized: list[str] = []
+        for value in values:
+            text = str(value).strip()
+            if text and text not in normalized:
+                normalized.append(text)
+        return normalized
+
+    def _merge_outputs(
+        self,
+        base: Mapping[str, Any],
+        incoming: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        merged = dict(base)
+        for key, value in incoming.items():
+            existing = merged.get(key)
+            if isinstance(existing, Mapping) and isinstance(value, Mapping):
+                merged[key] = self._merge_outputs(existing, value)
+            elif isinstance(existing, list) and isinstance(value, list):
+                merged_list = list(existing)
+                for item in value:
+                    if item not in merged_list:
+                        merged_list.append(item)
+                merged[key] = merged_list
+            else:
+                merged[key] = value
+        return merged
 
     def _build_workflow_id(self) -> str:
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -216,27 +217,33 @@ class WorkflowState:
         return details
 
     def add_artifact(self, path: str) -> None:
-        if path not in self.artifacts:
-            self.artifacts.append(path)
+        normalized = str(path).strip()
+        if normalized and normalized not in self.artifacts:
+            self.artifacts.append(normalized)
             self.touch()
 
     def add_changed_file(self, path: str) -> None:
-        if path not in self.changed_files:
-            self.changed_files.append(path)
+        normalized = str(path).strip()
+        if normalized and normalized not in self.changed_files:
+            self.changed_files.append(normalized)
             self.touch()
 
     def add_note(self, note: str) -> None:
-        self.notes.append(note)
-        self.touch()
+        normalized = str(note).strip()
+        if normalized:
+            self.notes.append(normalized)
+            self.touch()
 
     def add_risk(self, risk: str) -> None:
-        if risk not in self.risks:
-            self.risks.append(risk)
+        normalized = str(risk).strip()
+        if normalized and normalized not in self.risks:
+            self.risks.append(normalized)
             self.touch()
 
     def add_open_question(self, question: str) -> None:
-        if question not in self.open_questions:
-            self.open_questions.append(question)
+        normalized = str(question).strip()
+        if normalized and normalized not in self.open_questions:
+            self.open_questions.append(normalized)
             self.touch()
 
     def resolve_open_question(self, question: str) -> None:
@@ -295,18 +302,139 @@ class WorkflowState:
             )
         )
 
-    def can_finalize(self) -> bool:
-        if self.open_questions:
-            return False
-        if any(
-            task.status
-            in {TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED}
+    def extend_artifacts(self, paths: Iterable[str]) -> None:
+        for path in paths:
+            self.add_artifact(path)
+
+    def extend_changed_files(self, paths: Iterable[str]) -> None:
+        for path in paths:
+            self.add_changed_file(path)
+
+    def extend_notes(self, notes: Iterable[str]) -> None:
+        for note in notes:
+            self.add_note(note)
+
+    def extend_risks(self, risks: Iterable[str]) -> None:
+        for risk in risks:
+            self.add_risk(risk)
+
+    def extend_open_questions(self, questions: Iterable[str]) -> None:
+        for question in questions:
+            self.add_open_question(question)
+
+    def merge_task_outputs(
+        self,
+        task_id: str,
+        outputs: Mapping[str, Any] | None,
+        *,
+        replace: bool = False,
+    ) -> dict[str, Any]:
+        task = self.require_task(task_id)
+        if outputs is None:
+            return task.outputs
+        merged = dict(outputs) if replace else _merge_mapping(task.outputs, outputs)
+        task.outputs = merged
+        self.touch()
+        return task.outputs
+
+    def apply_result_payload(
+        self,
+        *,
+        task_id: str,
+        summary: str | None = None,
+        outputs: Mapping[str, Any] | None = None,
+        artifacts: Iterable[str] | None = None,
+        risks: Iterable[str] | None = None,
+        open_questions: Iterable[str] | None = None,
+        changed_files: Iterable[str] | None = None,
+        notes: Iterable[str] | None = None,
+        next_actions: Iterable[str] | None = None,
+        metrics: Mapping[str, Any] | None = None,
+        status: TaskStatus | None = None,
+    ) -> WorkflowTask:
+        task = self.require_task(task_id)
+        if status is not None:
+            task.status = status
+        if summary:
+            task.add_note(summary)
+            self.add_note(summary)
+        if notes is not None:
+            for note in notes:
+                normalized = str(note).strip()
+                if normalized:
+                    task.add_note(normalized)
+                    self.add_note(normalized)
+        if outputs is not None:
+            self.merge_task_outputs(task_id, outputs)
+        if artifacts is not None:
+            self.extend_artifacts(artifacts)
+        if risks is not None:
+            self.extend_risks(risks)
+        if open_questions is not None:
+            self.extend_open_questions(open_questions)
+        if changed_files is not None:
+            self.extend_changed_files(changed_files)
+
+        supplemental_outputs: dict[str, Any] = {}
+        if next_actions is not None:
+            normalized_next_actions = _normalize_unique_strings(next_actions)
+            if normalized_next_actions:
+                supplemental_outputs["next_actions"] = normalized_next_actions
+        if metrics is not None:
+            supplemental_outputs["metrics"] = dict(metrics)
+        if supplemental_outputs:
+            self.merge_task_outputs(task_id, supplemental_outputs)
+
+        self.touch()
+        return task
+
+    def finalization_status(self) -> dict[str, Any]:
+        blocking_open_questions = bool(self.open_questions)
+        finalization_task = self.require_task("finalization")
+        blocking_tasks = [
+            task.task_id
             for task in self.tasks
-        ):
-            return False
-        if any(task.status == TaskStatus.FAILED for task in self.tasks):
-            return False
-        return True
+            if task.task_id != "finalization"
+            and task.status in {TaskStatus.BLOCKED, TaskStatus.FAILED}
+        ]
+        incomplete_tasks = [
+            task.task_id
+            for task in self.tasks
+            if task.task_id != "finalization"
+            and task.status in {TaskStatus.PENDING, TaskStatus.IN_PROGRESS}
+        ]
+        finalization_blocked = finalization_task.status == TaskStatus.BLOCKED
+        finalization_incomplete = finalization_task.status in {
+            TaskStatus.PENDING,
+            TaskStatus.IN_PROGRESS,
+        }
+        acceptance_ready = (
+            not blocking_open_questions
+            and not blocking_tasks
+            and not incomplete_tasks
+            and not finalization_blocked
+            and not finalization_incomplete
+        )
+
+        failed_checks: list[str] = []
+        if blocking_open_questions:
+            failed_checks.append("open_questions_resolved")
+        if blocking_tasks or finalization_blocked:
+            failed_checks.append("blocking_work_resolved")
+        if incomplete_tasks or finalization_incomplete:
+            failed_checks.append("workflow_execution_completed")
+
+        return {
+            "ready_for_completion": acceptance_ready,
+            "failed_checks": failed_checks,
+            "blocking_open_questions": blocking_open_questions,
+            "blocking_tasks": blocking_tasks,
+            "incomplete_tasks": incomplete_tasks,
+            "finalization_status": finalization_task.status.value,
+        }
+
+    def can_finalize(self) -> bool:
+        return bool(self.finalization_status()["ready_for_completion"])
 
     def summary(self) -> dict[str, Any]:
         ready_tasks = self.ready_tasks()
@@ -338,6 +466,34 @@ class WorkflowState:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _normalize_unique_strings(values: Iterable[Any]) -> list[str]:
+    normalized: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text and text not in normalized:
+            normalized.append(text)
+    return normalized
+
+
+def _merge_mapping(
+    base: Mapping[str, Any],
+    incoming: Mapping[str, Any],
+) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in incoming.items():
+        existing = merged.get(key)
+        if isinstance(existing, Mapping) and isinstance(value, Mapping):
+            merged[key] = _merge_mapping(existing, value)
+        elif isinstance(existing, list) and isinstance(value, list):
+            merged[key] = [*existing]
+            for item in value:
+                if item not in merged[key]:
+                    merged[key].append(item)
+        else:
+            merged[key] = value
+    return merged
 
 
 def build_default_tasks() -> list[WorkflowTask]:
