@@ -1603,6 +1603,17 @@ def test_run_failure_recovery_e2e_persists_recovered_outputs_after_fix_loop(
     )
     assert edit_call["review_result"].outputs["review"]["severity"] == "ok"
     assert run_summary.session_id == "sess-started"
+    assert [
+        call["target_name"] for call in orchestrator.artifact_writer.text_calls
+    ] == [
+        "test-plan.md",
+        "test-results.md",
+        "review-report.md",
+        "fix-report.md",
+        "test-results.md",
+        "review-report.md",
+    ]
+
     assert any("fix loop を 1 回目として実行" in note for note in state.notes)
     assert any("fix proposal を生成した。" in note for note in state.notes)
 

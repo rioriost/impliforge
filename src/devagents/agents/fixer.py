@@ -37,6 +37,9 @@ class FixerAgent(BaseAgent):
         open_questions = self._normalize_list(
             normalized_requirements.get("open_questions")
         )
+        resolved_decisions = self._normalize_list(
+            normalized_requirements.get("resolved_decisions")
+        )
         unresolved_issues = self._normalize_list(review.get("unresolved_issues"))
         recommendations = self._normalize_list(review.get("recommendations"))
         findings = self._normalize_dict_list(review.get("findings"))
@@ -68,12 +71,15 @@ class FixerAgent(BaseAgent):
             "severity": severity,
             "constraints": constraints,
             "acceptance_criteria": acceptance_criteria,
+            "open_questions": open_questions,
+            "resolved_decisions": resolved_decisions,
             "unresolved_issues": unresolved_issues,
             "recommendations": recommendations,
             "fix_strategy": self._build_fix_strategy(
                 severity=severity,
                 unresolved_issues=unresolved_issues,
                 open_questions=open_questions,
+                resolved_decisions=resolved_decisions,
             ),
             "fix_slices": fix_slices,
             "edit_proposals": edit_proposals,
@@ -81,6 +87,7 @@ class FixerAgent(BaseAgent):
                 executed_checks=executed_checks,
                 unresolved_issues=unresolved_issues,
                 open_questions=open_questions,
+                resolved_decisions=resolved_decisions,
             ),
             "review_findings": findings,
             "documentation_inputs": {
@@ -100,6 +107,7 @@ class FixerAgent(BaseAgent):
             fix_needed=fix_needed,
             unresolved_issues=unresolved_issues,
             open_questions=open_questions,
+            resolved_decisions=resolved_decisions,
         )
 
         risks = []
@@ -107,9 +115,9 @@ class FixerAgent(BaseAgent):
             risks.append(
                 "レビューで warning または needs_follow_up が残っているため、完了判定は保留"
             )
-        if open_questions:
+        if open_questions and not resolved_decisions:
             risks.append(
-                "要件上の open questions が残っているため、修正方針が暫定になる"
+                "要件上の open questions が残っており、解消または defer 方針も未確定のため、修正方針が暫定になる"
             )
         if not code_change_slices:
             risks.append(
@@ -123,6 +131,7 @@ class FixerAgent(BaseAgent):
                 "fix_report": fix_report,
                 "fix_needed": fix_needed,
                 "open_questions": open_questions,
+                "resolved_decisions": resolved_decisions,
             },
             artifacts=["docs/fix-report.md"],
             next_actions=next_actions,
@@ -143,6 +152,7 @@ class FixerAgent(BaseAgent):
         severity: str,
         unresolved_issues: list[str],
         open_questions: list[str],
+        resolved_decisions: list[str],
     ) -> list[str]:
         strategy = [
             "Address review findings at the root cause instead of patching symptoms",
@@ -172,6 +182,10 @@ class FixerAgent(BaseAgent):
             strategy.append(
                 "Separate requirement ambiguity from implementation defects before fixing"
             )
+            if not resolved_decisions:
+                strategy.append(
+                    "Link each unresolved question to either a resolved decision or an explicit defer/follow-up record before broadening the fix scope"
+                )
 
         return strategy
 
@@ -227,6 +241,7 @@ class FixerAgent(BaseAgent):
         executed_checks: list[dict[str, Any]],
         unresolved_issues: list[str],
         open_questions: list[str],
+        resolved_decisions: list[str],
     ) -> list[str]:
         steps = [
             "Re-run test_execution after applying the proposed fix slice and record which failing or targeted checks were revalidated",
@@ -247,6 +262,10 @@ class FixerAgent(BaseAgent):
             steps.append(
                 "Confirm requirement ambiguity is documented separately from implementation defects"
             )
+            if not resolved_decisions:
+                steps.append(
+                    "Record whether each unresolved question was resolved or explicitly deferred, and link that outcome in the follow-up fix/report artifacts"
+                )
 
         return steps
 
@@ -256,6 +275,7 @@ class FixerAgent(BaseAgent):
         fix_needed: bool,
         unresolved_issues: list[str],
         open_questions: list[str],
+        resolved_decisions: list[str],
     ) -> list[str]:
         if fix_needed:
             actions = [
@@ -266,9 +286,9 @@ class FixerAgent(BaseAgent):
             ]
             if unresolved_issues:
                 actions.append("Track unresolved issues until severity becomes ok")
-            if open_questions:
+            if open_questions and not resolved_decisions:
                 actions.append(
-                    "Escalate requirement ambiguity before broadening code changes"
+                    "Resolve or explicitly defer each open question before broadening code changes"
                 )
             return actions
 
@@ -305,6 +325,27 @@ class FixerAgent(BaseAgent):
                 self._normalize_list(fix_plan.get("unresolved_issues"))
             )
         )
+        if self._normalize_list(fix_plan.get("open_questions")):
+            lines.extend(
+                [
+                    "",
+                    "## Unresolved-Question Resolution Status",
+                ]
+            )
+            if self._normalize_list(fix_plan.get("resolved_decisions")):
+                lines.extend(
+                    [
+                        "- Open questions have a documented resolution or handling direction.",
+                        "- Link each remaining fix slice and revalidation step back to the recorded decision or defer outcome.",
+                    ]
+                )
+            else:
+                lines.extend(
+                    [
+                        "- Open questions remain unresolved or undeferred.",
+                        "- Resolve or explicitly defer them before broadening implementation changes.",
+                    ]
+                )
         lines.extend(
             [
                 "",

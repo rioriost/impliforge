@@ -108,6 +108,7 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
         "Resolve blocking review concerns before expanding implementation scope",
         "Map each unresolved issue to a concrete fix slice and revalidation step",
         "Separate requirement ambiguity from implementation defects before fixing",
+        "Link each unresolved question to either a resolved decision or an explicit defer/follow-up record before broadening the fix scope",
     ]
     assert fix_plan["fix_slices"] == [
         {
@@ -167,6 +168,7 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
         "Confirm previously passed checks remain stable after the fix and note that follow-up status in the fix report",
         "Verify each unresolved issue is either resolved or explicitly deferred, with the matching review/test follow-up called out",
         "Confirm requirement ambiguity is documented separately from implementation defects",
+        "Record whether each unresolved question was resolved or explicitly deferred, and link that outcome in the follow-up fix/report artifacts",
     ]
 
     assert result.next_actions == [
@@ -175,11 +177,11 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
         "Re-run test_execution",
         "Re-run review",
         "Track unresolved issues until severity becomes ok",
-        "Escalate requirement ambiguity before broadening code changes",
+        "Resolve or explicitly defer each open question before broadening code changes",
     ]
     assert result.risks == [
         "レビューで warning または needs_follow_up が残っているため、完了判定は保留",
-        "要件上の open questions が残っているため、修正方針が暫定になる",
+        "要件上の open questions が残っており、解消または defer 方針も未確定のため、修正方針が暫定になる",
     ]
     assert result.metrics == {
         "acceptance_criteria_count": 1,
@@ -187,7 +189,7 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
         "unresolved_issue_count": 2,
         "recommendation_count": 2,
         "fix_slice_count": 2,
-        "revalidation_step_count": 5,
+        "revalidation_step_count": 6,
     }
 
     report = result.outputs["fix_report"]
@@ -201,6 +203,136 @@ def test_fixer_run_builds_fix_loop_plan_from_review_outputs() -> None:
     assert "`edit-2` [update]" in report
     assert "## Copilot Draft Notes" in report
     assert "Copilot suggested a narrow follow-up edit." in report
+
+
+def test_fixer_run_links_open_questions_to_resolved_decisions_in_reporting() -> None:
+    agent = FixerAgent()
+    state = _build_state("Link unresolved-question handling")
+    task = _build_task(
+        {
+            "normalized_requirements": {
+                "objective": "Link unresolved-question handling",
+                "acceptance_criteria": ["Fix reporting stays aligned"],
+                "constraints": ["Keep edits small"],
+                "open_questions": ["Who approves rollout?"],
+                "resolved_decisions": ["Defer rollout approval to operator sign-off."],
+            },
+            "documentation_bundle": {
+                "design": "# Design\n",
+                "runbook": "# Runbook\n",
+            },
+            "implementation": {
+                "code_change_slices": [{"targets": ["src/devagents/agents/fixer.py"]}]
+            },
+            "test_plan": {"test_cases": ["resolved-question reporting"]},
+            "test_results": {
+                "executed_checks": [{"name": "pytest -q tests/test_agents_fixer.py"}]
+            },
+            "review": {
+                "severity": "needs_follow_up",
+                "unresolved_issues": ["Follow-up review is still required"],
+                "recommendations": ["Keep the fix slice narrow"],
+                "findings": [
+                    {
+                        "status": "needs_follow_up",
+                        "summary": "Follow-up review is still required",
+                    }
+                ],
+            },
+        }
+    )
+
+    result = asyncio.run(agent.run(task, state))
+
+    assert result.is_success is True
+    assert result.outputs["resolved_decisions"] == [
+        "Defer rollout approval to operator sign-off."
+    ]
+
+    fix_plan = result.outputs["fix_plan"]
+    assert fix_plan["open_questions"] == ["Who approves rollout?"]
+    assert fix_plan["resolved_decisions"] == [
+        "Defer rollout approval to operator sign-off."
+    ]
+    assert (
+        "Resolve or explicitly defer each open question before broadening code changes"
+        not in result.next_actions
+    )
+    assert (
+        "要件上の open questions が残っているため、修正方針が暫定になる"
+        not in result.risks
+    )
+
+    report = result.outputs["fix_report"]
+    assert "## Unresolved-Question Resolution Status" in report
+    assert (
+        "- Open questions have a documented resolution or handling direction." in report
+    )
+    assert (
+        "- Link each remaining fix slice and revalidation step back to the recorded decision or defer outcome."
+        in report
+    )
+
+
+def test_fixer_run_reports_unresolved_open_questions_without_resolution_or_defer() -> (
+    None
+):
+    agent = FixerAgent()
+    state = _build_state("Keep unresolved-question escalation visible")
+    task = _build_task(
+        {
+            "normalized_requirements": {
+                "objective": "Keep unresolved-question escalation visible",
+                "acceptance_criteria": ["Escalation stays explicit"],
+                "constraints": ["Keep edits small"],
+                "open_questions": ["Who approves rollout?"],
+                "resolved_decisions": [],
+            },
+            "documentation_bundle": {
+                "design": "# Design\n",
+                "runbook": "# Runbook\n",
+            },
+            "implementation": {
+                "code_change_slices": [{"targets": ["src/devagents/agents/fixer.py"]}]
+            },
+            "test_plan": {"test_cases": ["unresolved-question escalation"]},
+            "test_results": {
+                "executed_checks": [{"name": "pytest -q tests/test_agents_fixer.py"}]
+            },
+            "review": {
+                "severity": "needs_follow_up",
+                "unresolved_issues": ["Follow-up review is still required"],
+                "recommendations": ["Keep the fix slice narrow"],
+                "findings": [
+                    {
+                        "status": "needs_follow_up",
+                        "summary": "Follow-up review is still required",
+                    }
+                ],
+            },
+        }
+    )
+
+    result = asyncio.run(agent.run(task, state))
+
+    assert result.is_success is True
+    assert result.outputs["resolved_decisions"] == []
+    assert (
+        "Resolve or explicitly defer each open question before broadening code changes"
+        in result.next_actions
+    )
+    assert (
+        "要件上の open questions が残っており、解消または defer 方針も未確定のため、修正方針が暫定になる"
+        in result.risks
+    )
+
+    report = result.outputs["fix_report"]
+    assert "## Unresolved-Question Resolution Status" in report
+    assert "- Open questions remain unresolved or undeferred." in report
+    assert (
+        "- Resolve or explicitly defer them before broadening implementation changes."
+        in report
+    )
 
 
 def test_fixer_run_without_fix_loop_uses_recommendation_and_completion_paths() -> None:

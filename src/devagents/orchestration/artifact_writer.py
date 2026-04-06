@@ -294,6 +294,38 @@ class WorkflowArtifactWriter:
                     path for path in state.artifacts if str(path).startswith("docs/")
                 ],
                 "artifact_count": len(state.artifacts),
+                "deferred_open_question_count": len(
+                    self._normalize_list(acceptance_gate.get("deferred_open_questions"))
+                ),
+                "unresolved_open_question_count": len(
+                    self._normalize_list(
+                        acceptance_gate.get("unresolved_open_questions")
+                    )
+                ),
+                "operator_checklist_evidence": {
+                    "persistent_context_recorded": bool(state.artifacts),
+                    "resume_context_available": bool(
+                        getattr(session_snapshot, "session_id", None)
+                    )
+                    and bool(
+                        self.session_manager.build_resume_prompt(session_snapshot)
+                    ),
+                    "docs_reviewable_before_completion": any(
+                        str(path).startswith("docs/") for path in state.artifacts
+                    ),
+                    "open_questions_resolved_or_deferred": not bool(
+                        self._normalize_list(
+                            acceptance_gate.get("unresolved_open_questions")
+                        )
+                    ),
+                    "blocked_work_visible": bool(
+                        self._normalize_list(acceptance_gate.get("failed_checks"))
+                    )
+                    or bool(state.blocked_tasks())
+                    or bool(
+                        self._normalize_list(acceptance_gate.get("unresolved_issues"))
+                    ),
+                },
             },
             "results": results,
             "failure_report": failure_report,
@@ -520,6 +552,7 @@ class WorkflowArtifactWriter:
                     f"- unresolved_issues: {self._format_list_or_none(acceptance_gate.get('unresolved_issues'))}",
                     f"- open_questions: {self._format_list_or_none(acceptance_gate.get('open_questions'))}",
                     f"- resolved_decisions: {self._format_list_or_none(acceptance_gate.get('resolved_decisions'))}",
+                    f"- deferred_open_questions: {self._format_list_or_none(acceptance_gate.get('deferred_open_questions'))}",
                     f"- unresolved_open_questions: {self._format_list_or_none(acceptance_gate.get('unresolved_open_questions'))}",
                     "",
                     "## Completion Evidence",
@@ -528,6 +561,15 @@ class WorkflowArtifactWriter:
                     f"- completed_tasks: {self._format_list_or_none([task.task_id for task in state.completed_tasks()])}",
                     f"- artifact_count: {len(state.artifacts)}",
                     f"- docs_artifacts: {self._format_list_or_none([path for path in state.artifacts if str(path).startswith('docs/')])}",
+                    f"- deferred_open_question_count: {len(self._normalize_list(acceptance_gate.get('deferred_open_questions')))}",
+                    f"- unresolved_open_question_count: {len(self._normalize_list(acceptance_gate.get('unresolved_open_questions')))}",
+                    "",
+                    "## Operator Checklist Evidence",
+                    f"- persistent_context_recorded: {bool(state.artifacts)}",
+                    f"- resume_context_available: {bool(getattr(state, 'session_id', None))}",
+                    f"- docs_reviewable_before_completion: {bool([path for path in state.artifacts if str(path).startswith('docs/')])}",
+                    f"- open_questions_resolved_or_deferred: {not bool(self._normalize_list(acceptance_gate.get('unresolved_open_questions')))}",
+                    f"- blocked_work_visible: {bool(self._normalize_list(acceptance_gate.get('failed_checks'))) or bool(state.blocked_tasks()) or bool(self._normalize_list(acceptance_gate.get('unresolved_issues')))}",
                 ]
             )
 

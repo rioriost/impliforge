@@ -13,6 +13,7 @@ from orchestration_test_helpers import (
 
 from devagents.agents.base import AgentResult
 from devagents.orchestration.artifact_writer import WorkflowArtifactWriter
+from devagents.orchestration.workflow import TaskStatus
 
 
 def test_workflow_artifact_writer_persists_outputs_and_finalizes(
@@ -485,6 +486,15 @@ def test_build_run_summary_payload_and_result_to_dict_handle_optional_fix_result
         ],
         "docs_artifacts": ["docs/design.md"],
         "artifact_count": 1,
+        "deferred_open_question_count": 0,
+        "unresolved_open_question_count": 0,
+        "operator_checklist_evidence": {
+            "persistent_context_recorded": True,
+            "resume_context_available": True,
+            "docs_reviewable_before_completion": True,
+            "open_questions_resolved_or_deferred": True,
+            "blocked_work_visible": True,
+        },
     }
     assert writer.result_to_dict(None) is None
 
@@ -1157,6 +1167,12 @@ def test_build_final_summary_renders_acceptance_gate_when_present(
     )
     assert "- artifact_count: 0" in summary
     assert "- docs_artifacts: none" in summary
+    assert "## Operator Checklist Evidence" in summary
+    assert "- persistent_context_recorded: False" in summary
+    assert "- resume_context_available: True" in summary
+    assert "- docs_reviewable_before_completion: False" in summary
+    assert "- open_questions_resolved_or_deferred: False" in summary
+    assert "- blocked_work_visible: True" in summary
     assert "- Re-run validation" in summary
     assert "- Update docs" in summary
 
@@ -1269,6 +1285,59 @@ def test_build_acceptance_gate_allows_explicitly_deferred_open_questions(
     assert acceptance_gate["resolved_decisions"] == []
     assert acceptance_gate["deferred_open_questions"] == ["Who approves rollout?"]
     assert acceptance_gate["unresolved_open_questions"] == []
+
+
+def test_build_final_summary_includes_deferred_open_questions(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+    state.add_artifact("docs/design.md")
+    state.update_task_status(
+        "finalization",
+        TaskStatus.BLOCKED,
+        outputs={
+            "acceptance_gate": {
+                "ready_for_completion": False,
+                "failed_checks": [],
+                "test_status": "passed",
+                "review_severity": "low",
+                "documentation_updated": True,
+                "unresolved_issues": [],
+                "open_questions": ["Who approves rollout?"],
+                "resolved_decisions": [],
+                "deferred_open_questions": ["Who approves rollout?"],
+                "unresolved_open_questions": [],
+            },
+            "next_actions": ["Review generated artifacts"],
+        },
+    )
+
+    summary = writer.build_final_summary(
+        state=state,
+        requirement=state.requirement,
+        implementation_result=result(outputs={"implementation": {"change_slices": []}}),
+        test_design_result=result(outputs={"test_plan": {"test_cases": []}}),
+        test_execution_result=result(
+            outputs={"test_results": {"status": "passed", "executed_checks": []}}
+        ),
+        review_result=result(
+            outputs={
+                "review": {
+                    "severity": "low",
+                    "unresolved_issues": [],
+                    "fix_loop_required": False,
+                }
+            }
+        ),
+        fix_result=None,
+    )
+
+    assert "- deferred_open_questions: Who approves rollout?" in summary
 
 
 def test_build_finalization_next_actions_includes_open_question_defer_guidance(
