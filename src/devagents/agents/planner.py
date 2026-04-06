@@ -26,6 +26,12 @@ class PlanningAgent(BaseAgent):
         )
         open_questions = self._normalize_list(normalized.get("open_questions"))
 
+        resolved_decisions = self._normalize_list(normalized.get("resolved_decisions"))
+        inferred_capabilities = self._normalize_list(
+            normalized.get("inferred_capabilities")
+        )
+        out_of_scope = self._normalize_list(normalized.get("out_of_scope"))
+
         plan = {
             "goal": objective,
             "phases": [
@@ -42,6 +48,9 @@ class PlanningAgent(BaseAgent):
             "constraints": constraints,
             "acceptance_criteria": acceptance_criteria,
             "open_questions": open_questions,
+            "resolved_decisions": resolved_decisions,
+            "inferred_capabilities": inferred_capabilities,
+            "out_of_scope": out_of_scope,
             "task_breakdown": [
                 {
                     "task_id": "requirements_analysis",
@@ -111,6 +120,9 @@ class PlanningAgent(BaseAgent):
                 "constraint_count": len(constraints),
                 "acceptance_criteria_count": len(acceptance_criteria),
                 "open_question_count": len(open_questions),
+                "resolved_decision_count": len(resolved_decisions),
+                "inferred_capability_count": len(inferred_capabilities),
+                "out_of_scope_count": len(out_of_scope),
                 "task_count": len(plan["task_breakdown"]),
                 "objective_length": objective_length,
                 "long_objective_detected": long_objective_detected,

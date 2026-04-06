@@ -186,6 +186,35 @@ class WorkflowState:
     def failed_tasks(self) -> list[WorkflowTask]:
         return [task for task in self.tasks if task.status == TaskStatus.FAILED]
 
+    def skipped_tasks(self) -> list[WorkflowTask]:
+        return [task for task in self.tasks if task.status == TaskStatus.SKIPPED]
+
+    def dependency_blockers_for(self, task_id: str) -> list[str]:
+        task = self.require_task(task_id)
+        blockers: list[str] = []
+        for dependency_id in task.depends_on:
+            dependency = self.require_task(dependency_id)
+            if dependency.status != TaskStatus.COMPLETED:
+                blockers.append(dependency_id)
+        return blockers
+
+    def is_task_ready(self, task_id: str) -> bool:
+        task = self.require_task(task_id)
+        if task.status != TaskStatus.PENDING:
+            return False
+        return not self.dependency_blockers_for(task_id)
+
+    def ready_tasks(self) -> list[WorkflowTask]:
+        return [task for task in self.tasks if self.is_task_ready(task.task_id)]
+
+    def blocked_task_details(self) -> dict[str, list[str]]:
+        details: dict[str, list[str]] = {}
+        for task in self.tasks:
+            blockers = self.dependency_blockers_for(task.task_id)
+            if blockers:
+                details[task.task_id] = blockers
+        return details
+
     def add_artifact(self, path: str) -> None:
         if path not in self.artifacts:
             self.artifacts.append(path)
@@ -280,6 +309,9 @@ class WorkflowState:
         return True
 
     def summary(self) -> dict[str, Any]:
+        ready_tasks = self.ready_tasks()
+        blocked_task_details = self.blocked_task_details()
+
         return {
             "workflow_id": self.workflow_id,
             "phase": self.phase.value,
@@ -291,7 +323,11 @@ class WorkflowState:
                 "blocked": len(self.blocked_tasks()),
                 "completed": len(self.completed_tasks()),
                 "failed": len(self.failed_tasks()),
+                "skipped": len(self.skipped_tasks()),
+                "ready": len(ready_tasks),
             },
+            "ready_tasks": [task.task_id for task in ready_tasks],
+            "blocked_task_details": blocked_task_details,
             "artifacts": list(self.artifacts),
             "changed_files": list(self.changed_files),
             "open_questions": list(self.open_questions),

@@ -27,7 +27,41 @@ class RequirementsAgent(BaseAgent):
         normalized = self._normalize_requirement(requirement)
         return AgentResult.success(
             "要件を正規化し、初期の受け入れ条件と確認事項を抽出した。",
-            outputs={"normalized_requirements": normalized},
+            outputs={
+                "normalized_requirements": normalized,
+                "requirements_document": self._build_requirements_document(normalized),
+                "acceptance_criteria_document": self._build_list_document(
+                    title="# Acceptance Criteria",
+                    items=normalized["acceptance_criteria"],
+                ),
+                "open_questions_document": self._build_list_document(
+                    title="# Open Questions",
+                    items=normalized["open_questions"],
+                ),
+                "requirements_artifacts": {
+                    "docs/requirements.normalized.md": self._build_requirements_document(
+                        normalized
+                    ),
+                    "docs/acceptance-criteria.md": self._build_list_document(
+                        title="# Acceptance Criteria",
+                        items=normalized["acceptance_criteria"],
+                    ),
+                    "docs/open-questions.md": self._build_list_document(
+                        title="# Open Questions",
+                        items=normalized["open_questions"],
+                    ),
+                },
+                "requirements_targets": [
+                    "docs/requirements.normalized.md",
+                    "docs/acceptance-criteria.md",
+                    "docs/open-questions.md",
+                ],
+            },
+            artifacts=[
+                "docs/requirements.normalized.md",
+                "docs/acceptance-criteria.md",
+                "docs/open-questions.md",
+            ],
             next_actions=[
                 "implementation-plan を生成する",
                 "open_questions があれば解消方針を決める",
@@ -40,6 +74,51 @@ class RequirementsAgent(BaseAgent):
                 "constraint_count": len(normalized["constraints"]),
             },
         )
+
+    def _build_requirements_document(self, normalized: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                "# Normalized Requirements",
+                "",
+                "## Objective",
+                str(normalized.get("objective", "")).strip(),
+                "",
+                "## Summary",
+                str(normalized.get("summary", "")).strip(),
+                "",
+                "## Constraints",
+                *self._render_bullets(normalized.get("constraints")),
+                "",
+                "## Acceptance Criteria",
+                *self._render_bullets(normalized.get("acceptance_criteria")),
+                "",
+                "## Inferred Capabilities",
+                *self._render_bullets(normalized.get("inferred_capabilities")),
+                "",
+                "## Out of Scope",
+                *self._render_bullets(normalized.get("out_of_scope")),
+                "",
+                "## Open Questions",
+                *self._render_bullets(normalized.get("open_questions")),
+                "",
+                "## Resolved Decisions",
+                *self._render_bullets(normalized.get("resolved_decisions")),
+                "",
+                "## Risks",
+                *self._render_bullets(normalized.get("risks")),
+            ]
+        )
+
+    def _build_list_document(self, *, title: str, items: Any) -> str:
+        return "\n".join([title, "", *self._render_bullets(items)])
+
+    def _render_bullets(self, items: Any) -> list[str]:
+        if not isinstance(items, list):
+            return ["- None"]
+        normalized_items = [str(item).strip() for item in items if str(item).strip()]
+        if not normalized_items:
+            return ["- None"]
+        return [f"- {item}" for item in normalized_items]
 
     def _normalize_requirement(self, requirement: str) -> dict[str, Any]:
         lower_requirement = requirement.lower()

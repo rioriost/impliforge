@@ -77,6 +77,30 @@ def test_run_returns_normalized_requirements_and_metrics() -> None:
     assert normalized["resolved_decisions"] == []
     assert normalized["risks"] == ["未確定の SDK API 差分は実装時に吸収が必要"]
 
+    assert result.outputs["requirements_targets"] == [
+        "docs/requirements.normalized.md",
+        "docs/acceptance-criteria.md",
+        "docs/open-questions.md",
+    ]
+    assert result.artifacts == [
+        "docs/requirements.normalized.md",
+        "docs/acceptance-criteria.md",
+        "docs/open-questions.md",
+    ]
+    assert result.outputs["requirements_artifacts"] == {
+        "docs/requirements.normalized.md": result.outputs["requirements_document"],
+        "docs/acceptance-criteria.md": result.outputs["acceptance_criteria_document"],
+        "docs/open-questions.md": result.outputs["open_questions_document"],
+    }
+    assert "# Normalized Requirements" in result.outputs["requirements_document"]
+    assert "## Objective" in result.outputs["requirements_document"]
+    assert requirement in result.outputs["requirements_document"]
+    assert (
+        "- The workflow can define and execute validation steps"
+        in result.outputs["acceptance_criteria_document"]
+    )
+    assert result.outputs["open_questions_document"] == "# Open Questions\n\n- None"
+
     assert result.risks == normalized["risks"]
     assert result.metrics == {
         "acceptance_criteria_count": len(normalized["acceptance_criteria"]),
@@ -105,6 +129,37 @@ def test_normalize_requirement_adds_default_open_questions_and_decisions() -> No
         "未確定の SDK API 差分は実装時に吸収が必要",
         "モデル切替戦略にコスト上限が未定義のため、運用時に費用が増える可能性がある",
     ]
+
+
+def test_run_builds_open_questions_artifact_when_questions_remain() -> None:
+    agent = RequirementsAgent()
+    requirement = "Build a multi-agent workflow with session restore"
+    task = AgentTask(
+        name="requirements_analysis",
+        objective="Normalize requirement",
+        inputs={"requirement": requirement},
+    )
+
+    result = asyncio.run(agent.run(task, state=None))
+
+    assert result.status == "completed"
+    assert result.outputs["requirements_targets"] == [
+        "docs/requirements.normalized.md",
+        "docs/acceptance-criteria.md",
+        "docs/open-questions.md",
+    ]
+    assert (
+        "persistent context の保存先と復元粒度をどこまで保証するか未確定。"
+        in result.outputs["open_questions_document"]
+    )
+    assert (
+        "破壊的変更や依存追加時の承認フロー要否が未確定。"
+        in result.outputs["open_questions_document"]
+    )
+    assert (
+        result.outputs["requirements_artifacts"]["docs/open-questions.md"]
+        == result.outputs["open_questions_document"]
+    )
 
 
 def test_normalize_requirement_handles_japanese_keywords() -> None:

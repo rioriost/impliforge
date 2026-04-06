@@ -658,3 +658,43 @@ def test_orchestrator_stops_on_review_failure(
     assert state.require_task("review").status == TaskStatus.FAILED
     assert state.require_task("finalization").status == TaskStatus.PENDING
     assert state.notes[-1] == "review failed: review failed"
+
+
+def test_workflow_summary_includes_ready_and_blocked_dependency_details() -> None:
+    state = make_state()
+    state.update_task_status("requirements_analysis", TaskStatus.COMPLETED)
+
+    summary = state.summary()
+
+    assert summary["task_counts"]["ready"] == 1
+    assert summary["task_counts"]["skipped"] == 0
+    assert summary["ready_tasks"] == ["planning"]
+    assert summary["blocked_task_details"] == {
+        "documentation": ["planning"],
+        "implementation": ["planning"],
+        "test_design": ["planning"],
+        "test_execution": ["implementation", "test_design"],
+        "review": ["implementation", "test_execution"],
+        "finalization": ["documentation", "review"],
+    }
+
+
+def test_workflow_ready_tasks_excludes_non_pending_and_dependency_blocked_tasks() -> (
+    None
+):
+    state = make_state()
+    state.update_task_status("requirements_analysis", TaskStatus.COMPLETED)
+    state.update_task_status("planning", TaskStatus.IN_PROGRESS)
+
+    ready_tasks = state.ready_tasks()
+    blocked_details = state.blocked_task_details()
+
+    assert ready_tasks == []
+    assert blocked_details == {
+        "documentation": ["planning"],
+        "implementation": ["planning"],
+        "test_design": ["planning"],
+        "test_execution": ["implementation", "test_design"],
+        "review": ["implementation", "test_execution"],
+        "finalization": ["documentation", "review"],
+    }
