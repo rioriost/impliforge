@@ -84,10 +84,25 @@ class WorkflowArtifactWriter:
         fix_result: AgentResult | None,
         session_snapshot: Any,
     ) -> dict[str, str]:
-        """Persist workflow state, session snapshot, run summary, and final summary."""
+        """Persist workflow state, workflow details, session snapshot, run summary, and final summary."""
         self.docs_dir.mkdir(parents=True, exist_ok=True)
 
         workflow_state_path = self.state_store.save_workflow_state(state)
+        workflow_details_payload = self.build_workflow_details_payload(
+            state=state,
+            requirements_result=requirements_result,
+            planning_result=planning_result,
+            documentation_result=documentation_result,
+            implementation_result=implementation_result,
+            test_design_result=test_design_result,
+            test_execution_result=test_execution_result,
+            review_result=review_result,
+            fix_result=fix_result,
+        )
+        workflow_details_path = self.state_store.save_named_payload(
+            f"workflows/{state.workflow_id}/workflow-details.json",
+            workflow_details_payload,
+        )
         session_snapshot_path = self.state_store.save_session_snapshot(session_snapshot)
         run_summary_payload = self.build_run_summary_payload(
             state=state,
@@ -121,6 +136,7 @@ class WorkflowArtifactWriter:
 
         for path in (
             workflow_state_path,
+            workflow_details_path,
             session_snapshot_path,
             run_summary_path,
             final_summary_path,
@@ -158,9 +174,36 @@ class WorkflowArtifactWriter:
 
         return {
             "workflow_state": workflow_state_path.as_posix(),
+            "workflow_details": workflow_details_path.as_posix(),
             "session_snapshot": session_snapshot_path.as_posix(),
             "run_summary": run_summary_path.as_posix(),
             "final_summary": final_summary_path.as_posix(),
+        }
+
+    def build_workflow_details_payload(
+        self,
+        *,
+        state: WorkflowState,
+        requirements_result: AgentResult,
+        planning_result: AgentResult,
+        documentation_result: AgentResult,
+        implementation_result: AgentResult,
+        test_design_result: AgentResult,
+        test_execution_result: AgentResult,
+        review_result: AgentResult,
+        fix_result: AgentResult | None,
+    ) -> dict[str, Any]:
+        """Build the persisted workflow details payload."""
+        return {
+            "workflow": state.to_dict(),
+            "requirements_result": self.result_to_dict(requirements_result),
+            "planning_result": self.result_to_dict(planning_result),
+            "documentation_result": self.result_to_dict(documentation_result),
+            "implementation_result": self.result_to_dict(implementation_result),
+            "test_design_result": self.result_to_dict(test_design_result),
+            "test_execution_result": self.result_to_dict(test_execution_result),
+            "review_result": self.result_to_dict(review_result),
+            "fix_result": self.result_to_dict(fix_result) if fix_result else None,
         }
 
     def build_run_summary_payload(
@@ -716,6 +759,14 @@ class WorkflowArtifactWriter:
             "primary_failure": primary_failure,
             "failed_steps": failed_steps,
             "next_actions": primary_failure["next_actions"],
+            "operator_summary": primary_failure.get("summary"),
+            "operator_visibility": {
+                "has_failures": True,
+                "primary_result": primary_failure.get("result"),
+                "primary_failure_category": primary_failure.get("failure_category"),
+                "primary_failure_cause": primary_failure.get("failure_cause"),
+                "recommended_next_actions": primary_failure["next_actions"],
+            },
         }
 
     def _format_list_or_none(self, value: Any) -> str:

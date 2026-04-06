@@ -77,6 +77,14 @@ class DummyStateStore:
         path.write_text(str(summary), encoding="utf-8")
         return path
 
+    def save_named_payload(
+        self, relative_path: str | Path, payload: dict[str, Any]
+    ) -> Path:
+        path = self.root_dir / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(payload), encoding="utf-8")
+        return path
+
 
 class DummySafeEditResult:
     def __init__(

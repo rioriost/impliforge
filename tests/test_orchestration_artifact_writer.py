@@ -97,7 +97,10 @@ def test_workflow_artifact_writer_persists_outputs_and_finalizes(
     ]
     assert state.require_task("finalization").status.value == "blocked"
     assert any(path.endswith("workflow-state.json") for path in state.artifacts)
+    assert any(path.endswith("workflow-details.json") for path in state.artifacts)
     assert any(path.endswith("run-summary.json") for path in state.artifacts)
+    assert "workflow_details" in paths
+    assert paths["workflow_details"].endswith("workflow-details.json")
     assert any(path.endswith("final-summary.md") for path in state.changed_files)
 
 
@@ -249,6 +252,74 @@ def test_result_to_dict_uses_pre_normalized_agent_result_fields(
         "failure_category": None,
         "failure_cause": None,
     }
+
+
+def test_build_workflow_details_payload_includes_all_phase_results(
+    tmp_path: Path,
+) -> None:
+    writer = WorkflowArtifactWriter(
+        docs_dir=tmp_path / "docs",
+        state_store=DummyStateStore(tmp_path / "artifacts"),
+        session_manager=DummySessionManager(),
+    )
+    state = build_state()
+
+    requirements_result = result(
+        outputs={"normalized_requirements": {"objective": "x"}}
+    )
+    planning_result = result(outputs={"plan": {"phases": ["plan"]}})
+    documentation_result = result(outputs={"design_document": "# Design\n"})
+    implementation_result = result(outputs={"implementation": {"change_slices": []}})
+    test_design_result = result(outputs={"test_plan": {"test_cases": ["case-1"]}})
+    test_execution_result = result(
+        outputs={"test_results": {"status": "passed", "executed_checks": ["check-1"]}}
+    )
+    review_result = result(
+        outputs={
+            "review": {
+                "severity": "low",
+                "unresolved_issues": [],
+                "fix_loop_required": False,
+            }
+        }
+    )
+    fix_result = result(
+        outputs={
+            "fix_plan": {
+                "severity": "medium",
+                "change_slices": ["fix-slice-a"],
+            }
+        },
+        next_actions=["apply fix slice"],
+    )
+
+    payload = writer.build_workflow_details_payload(
+        state=state,
+        requirements_result=requirements_result,
+        planning_result=planning_result,
+        documentation_result=documentation_result,
+        implementation_result=implementation_result,
+        test_design_result=test_design_result,
+        test_execution_result=test_execution_result,
+        review_result=review_result,
+        fix_result=fix_result,
+    )
+
+    assert payload["workflow"]["workflow_id"] == state.workflow_id
+    assert payload["requirements_result"]["status"] == "completed"
+    assert payload["planning_result"]["outputs"]["plan"]["phases"] == ["plan"]
+    assert payload["documentation_result"]["outputs"]["design_document"] == "# Design\n"
+    assert payload["implementation_result"]["outputs"]["implementation"] == {
+        "change_slices": []
+    }
+    assert payload["test_design_result"]["outputs"]["test_plan"]["test_cases"] == [
+        "case-1"
+    ]
+    assert payload["test_execution_result"]["outputs"]["test_results"]["status"] == (
+        "passed"
+    )
+    assert payload["review_result"]["outputs"]["review"]["severity"] == "low"
+    assert payload["fix_result"]["outputs"]["fix_plan"]["severity"] == "medium"
 
 
 def test_build_run_summary_payload_and_result_to_dict_handle_optional_fix_result(
@@ -761,6 +832,17 @@ def test_build_run_summary_payload_includes_failure_report_and_primary_next_acti
         "Clarify the architecture decision",
         "Retry planning with the chosen direction",
     ]
+    assert payload["failure_report"]["operator_summary"] == "planning failed"
+    assert payload["failure_report"]["operator_visibility"] == {
+        "has_failures": True,
+        "primary_result": "planning_result",
+        "primary_failure_category": "design_inconsistency",
+        "primary_failure_cause": "architecture decision is still unresolved",
+        "recommended_next_actions": [
+            "Clarify the architecture decision",
+            "Retry planning with the chosen direction",
+        ],
+    }
 
 
 def test_build_run_summary_payload_fills_missing_failed_required_fields(
@@ -827,6 +909,14 @@ def test_build_run_summary_payload_fills_missing_failed_required_fields(
         "failure_category": "unknown_failure",
         "failure_cause": "No failure cause provided.",
         "next_actions": ["Clarify the architecture decision"],
+    }
+    assert payload["failure_report"]["operator_summary"] == "planning failed"
+    assert payload["failure_report"]["operator_visibility"] == {
+        "has_failures": True,
+        "primary_result": "planning_result",
+        "primary_failure_category": "unknown_failure",
+        "primary_failure_cause": "No failure cause provided.",
+        "recommended_next_actions": ["Clarify the architecture decision"],
     }
 
 
