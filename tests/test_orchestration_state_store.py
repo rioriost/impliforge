@@ -61,6 +61,11 @@ def test_save_and_load_workflow_state_with_custom_file_name(tmp_path: Path) -> N
     assert "saved_at" in payload
     assert payload["workflow"]["workflow_id"] == state.workflow_id
     assert payload["workflow"]["session_id"] == "sess-store-001"
+    assert (
+        payload["workflow"]["execution_trace"][0]["event_type"]
+        == "workflow_initialized"
+    )
+    assert payload["workflow"]["execution_trace"][-1]["event_type"] == "session_bound"
     assert payload["summary"]["workflow_id"] == state.workflow_id
     assert payload["summary"]["session_id"] == "sess-store-001"
     assert payload["summary"]["task_counts"]["completed"] == 1
