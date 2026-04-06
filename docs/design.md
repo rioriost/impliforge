@@ -3,12 +3,21 @@
 ## Objective
 GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 
+## Status
+- 実装済みの orchestrator-centric workflow が存在する
+- session persistence / rotation / resume flow は実装済み
+- task-aware routing、artifact persistence、review/fix loop、safe edit phase は実装済み
+- 主要な docs-driven refinement と回帰テスト追加まで完了している
+- 現在のテストスイートは `291 passed`
+- source coverage は全体で高水準で、主要 source file は概ね 90% 以上を満たしている
+
 ## Architecture Direction
 - Orchestrator-centric multi-agent workflow
 - GitHub Copilot SDK is isolated behind a client layer
 - Session continuity is handled through snapshot and resume flow
 - Model routing is selected per task kind
 - `main.py` の orchestrator は phase sequencing を中心に保ち、成果物保存と edit 実行は専用 helper に分離する
+- acceptance gating、operator-facing summary、approval/risk visibility を artifact layer に集約する
 
 ## Constraints
 - Use GitHub Copilot SDK as the orchestration foundation
@@ -31,14 +40,22 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 - test_design
 - test_execution
 - review
+- fix
+- acceptance_gating
+- operator_summary
+- approval_visibility
 
-## Planned Phases
-1. Define workflow state and agent interfaces
-2. Implement orchestrator and CLI entrypoint
-3. Add session persistence and model routing
-4. Add implementation, test, and review agents
-5. Extract artifact persistence and edit execution into dedicated orchestration helpers
-6. Commonize phase execution for routing, Copilot request construction, and agent dispatch
+## Implemented Phases
+1. requirements analysis
+2. planning
+3. documentation
+4. implementation
+5. test design
+6. test execution
+7. review
+8. fix loop
+9. safe edit phase
+10. final artifact persistence and completion evidence generation
 
 ## Task Breakdown
 - `requirements_analysis`: Normalize the incoming requirement and extract constraints.
@@ -55,26 +72,53 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
   - depends_on: implementation, test_design
 - `review`: Review implementation quality, risks, and acceptance coverage.
   - depends_on: implementation, test_execution
-- `finalization`: Prepare final summary and completion artifacts.
-  - depends_on: documentation, review
+- `fix`: Generate focused fix slices and revalidation guidance when review requires follow-up.
+  - depends_on: review, test_execution
+- `finalization`: Prepare final summary, acceptance evidence, and operator-facing completion artifacts.
+  - depends_on: documentation, review, fix
 
 ## Current Implementation Shape
 - `src/devagents/main.py`
   - `SkeletonOrchestrator` が workflow の phase 順序、依存注入、session rotation の呼び出しを担当する
   - phase 実行は `_execute_phase` に共通化され、routing / Copilot request / agent dispatch / result 適用をまとめて扱う
+  - fix loop 成功後は rerun 済み implementation / test / review 結果を completion 側へ引き継ぐ
 - `src/devagents/orchestration/artifact_writer.py`
   - `WorkflowArtifactWriter` が design/runbook/test/review/fix の文書出力、final summary 生成、workflow state / session snapshot / run summary 保存を担当する
+  - acceptance gate、completion evidence、operator checklist evidence、approval risk summary、failure visibility を生成する
+  - `artifacts/workflows/<workflow_id>/workflow-details.json` を保存する
 - `src/devagents/orchestration/edit_phase.py`
   - `EditPhaseOrchestrator` が safe edit operations 構築、allowlisted file edits、structured code edit request 生成と適用を担当する
 - `src/devagents/orchestration/orchestrator.py`
   - minimal orchestrator 実装を shared agent interfaces と canonical workflow state に揃えた参照実装として保持する
+  - open questions や blocked/failed task が残る場合は acceptance-driven に completion を block する
 - `src/devagents/orchestration/workflow.py`
   - canonical な `WorkflowState`、`WorkflowTask`、phase / task status、default task graph を提供する
+  - ready task / dependency blocker 可視化を提供する
+- `src/devagents/orchestration/session_manager.py`
+  - session snapshot、restore、rotation、resume prompt 生成を担当する
+- `src/devagents/orchestration/runtime_support.py`
+  - session rotation helper、budget-like degraded routing、approval hook 連携を担当する
+- `src/devagents/models/routing.py`
+  - task-aware routing、fallback metadata、routing reason を提供する
+- `src/devagents/runtime/copilot_client.py`
+  - Copilot SDK 呼び出しと environment preflight を担当する
+- `src/devagents/agents/`
+  - requirements / planner / documentation / implementation / test_design / reviewer / fixer が構造化出力を返す
+  - implementation agent は downstream handoff metadata を返す
+  - fixer は unresolved question の resolved / deferred / unresolved 状態を fix report に反映する
+  - documentation agent は blocked-state handling、escalation actions、budget-pressure guidance、artifact-volume guidance を runbook に反映する
+
+## Validation Status
+- full test suite: `291 passed`
+- docs-driven slices は複数回の並列実行で検証済み
+- failure-recovery E2E、session rotation stability、acceptance gating、operator-facing summaries、approval visibility、environment assumptions の回帰テストを追加済み
 
 ## Out of Scope
 - Web UI
 - 複数リポジトリ同時対応
 - 高度な分散スケジューリング
+- 複雑なコスト最適化
+- 高度な履歴検索
 
 ## Persistent Context Policy
 - persistent context は `artifacts/workflow-state.json`、`artifacts/sessions/<session_id>/session-snapshot.json`、`artifacts/summaries/<workflow_id>/run-summary.json` に保存する。
@@ -95,14 +139,5 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 - `main.py` の `SkeletonOrchestrator` は phase の並びと依存注入を主責務とし、成果物永続化は `orchestration/artifact_writer.py`、safe edit / structured code edit は `orchestration/edit_phase.py` に委譲する。
 - phase 実行の routing、Copilot request 構築、agent dispatch、result 適用は `_execute_phase` に共通化する。
 - `orchestration/orchestrator.py` の minimal orchestrator は shared agent interfaces と canonical workflow state を使う。
-
-## Copilot Draft Notes
-[dry-run] Copilot SDK response placeholder
-model: gpt-5.4
-task_type: documentation
-reason: sdk_error:JsonRpcError
-session_id: sess-20260406012216
-workflow_id: wf-20260406012216
-persistent_context_keys: normalized_requirements, phase, plan, requirement, workflow_id
-prompt_preview:
-{'objective': 'GitHub Copilot SDKを用いたマルチエージェント環境を構築する', 'summary': '要件をマルチエージェント実装向けに構造化した。', 'constraints': ['Use GitHub Copilot SDK as the orchestration foundation', 'Default model is GPT-5.4 with task-aware routing', 'Development workflow is managed with uv', 'Copilot SDK integration points must be isolated behind a client layer'], 'acceptance_criteria': ['A multi-agent workflow exists with an
+- acceptance gate は unresolved open questions、deferred open questions、blocked work、completion evidence を operator-facing artifact に反映する。
+- fix loop 後の rerun 結果は final artifact persistence と safe edit phase に引き継ぐ。
