@@ -238,8 +238,7 @@ class ImplementationAgent(BaseAgent):
                 "code_change_slice_count": len(implementation["code_change_slices"]),
                 "open_question_count": len(open_questions),
             },
-        )
-        # END STRUCTURED EDIT: ImplementationAgent.run
+        )# END STRUCTURED EDIT: ImplementationAgent.run
 
     def _as_dict(self, value: Any) -> dict[str, Any]:
         if isinstance(value, dict):

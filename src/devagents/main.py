@@ -1305,8 +1305,7 @@ class SkeletonOrchestrator:
                 ),
                 reason="Persist workflow details through safe edit phase",
             )
-        )
-        # END STRUCTURED EDIT: SkeletonOrchestrator._build_safe_edit_operations
+        )# END STRUCTURED EDIT: SkeletonOrchestrator._build_safe_edit_operations
 
         return operations
 

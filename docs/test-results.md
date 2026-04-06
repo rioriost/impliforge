@@ -40,21 +40,22 @@ GitHub Copilot SDKを用いたマルチエージェント環境を構築する
 - test-case-12 [validation] => passed
   - Validate implementation slice `artifact-persistence`: Persist implementation and documentation outputs into docs/ and artifacts/.
 - test-case-13 [validation] => passed
-  - Validate implementation slice `src-allowlisted-edit-phase`: Promote approved implementation proposals into allowlisted source edits under src/devagents/.
+  - Validate implementation slice `src-allowlisted-edit-phase`: Promote approved implementation proposals into structured source edits under src/devagents/.
 - test-case-14 [validation] => passed
   - Ensure unresolved questions are surfaced before execution expands.
 
-## Open Questions
-- persistent context の保存先と復元粒度をどこまで保証するか未確定。
-- 破壊的変更や依存追加時の承認フロー要否が未確定。
+## Resolved Decisions
+- persistent context は `artifacts/workflow-state.json`、`artifacts/sessions/<session_id>/session-snapshot.json`、`artifacts/summaries/<workflow_id>/run-summary.json` に保存する。
+- 復元粒度は workflow/session 単位とし、`requirement`、`phase`、`workflow_id`、`session_id`、完了済みタスク、未完了タスク、直近要約、resume prompt を保証対象にする。
+- delete 操作、広範囲 overwrite、依存追加、実行環境変更は human approval 必須とする。
 
 ## Copilot Draft Notes
 [dry-run] Copilot SDK response placeholder
 model: gpt-5.4
 task_type: test_execution
 reason: sdk_error:JsonRpcError
-session_id: sess-20260406005343
-workflow_id: wf-20260406005343
+session_id: sess-20260406011202
+workflow_id: wf-20260406011202
 persistent_context_keys: implementation, normalized_requirements, phase, plan, requirement, test_plan, workflow_id
 prompt_preview:
 {'objective': 'GitHub Copilot SDKを用いたマルチエージェント環境を構築する', 'summary': '要件をマルチエージェント実装向けに構造化した。', 'constraints': ['Use GitHub Copilot SDK as the orchestration foundation', 'Default model is GPT-5.4 with task-aware routing', 'Development workflow is managed with uv', 'Copilot SDK integration points must be isolated behind a client layer'], 'acceptance_criteria': ['A multi-agent workflow exists with an

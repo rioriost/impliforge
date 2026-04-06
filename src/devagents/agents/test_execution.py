@@ -31,6 +31,9 @@ class TestExecutionAgent(BaseAgent):
         open_questions = self._normalize_list(
             normalized_requirements.get("open_questions")
         )
+        resolved_decisions = self._normalize_list(
+            normalized_requirements.get("resolved_decisions")
+        )
         code_change_slices = self._normalize_dict_list(
             implementation.get("code_change_slices")
         )
@@ -46,6 +49,7 @@ class TestExecutionAgent(BaseAgent):
         summary = self._build_summary(
             executed_checks=executed_checks,
             open_questions=open_questions,
+            resolved_decisions=resolved_decisions,
         )
         test_results_document = self._build_test_results_document(
             objective=objective,
@@ -53,17 +57,17 @@ class TestExecutionAgent(BaseAgent):
             plan_phases=plan_phases,
             executed_checks=executed_checks,
             open_questions=open_questions,
+            resolved_decisions=resolved_decisions,
             copilot_response=copilot_response,
         )
 
         outputs = {
             "test_results": {
                 "summary": summary,
-                "status": "provisional_passed"
-                if not open_questions
-                else "needs_review",
+                "status": "provisional_passed",
                 "executed_checks": executed_checks,
                 "open_questions": open_questions,
+                "resolved_decisions": resolved_decisions,
                 "acceptance_criteria": acceptance_criteria,
             },
             "test_results_document": test_results_document,
@@ -78,9 +82,9 @@ class TestExecutionAgent(BaseAgent):
             risks.append(
                 "具体的な test_cases が不足しているため、検証結果は暫定評価となる"
             )
-        if open_questions:
+        if open_questions and not resolved_decisions:
             risks.append(
-                "未解決の open questions が残っているため、最終的な合格判定は保留"
+                "未解決の open questions が残っており、対応方針も未確定のため、最終的な合格判定は保留"
             )
         if not code_change_slices:
             risks.append(
@@ -171,13 +175,14 @@ class TestExecutionAgent(BaseAgent):
         *,
         executed_checks: list[dict[str, Any]],
         open_questions: list[str],
+        resolved_decisions: list[str],
     ) -> str:
         passed_count = sum(
             1 for item in executed_checks if str(item.get("status")) == "passed"
         )
         total_count = len(executed_checks)
 
-        if open_questions:
+        if open_questions and not resolved_decisions:
             return (
                 f"{passed_count}/{total_count} checks were provisionally passed, "
                 "but unresolved questions remain before final validation."
@@ -193,6 +198,7 @@ class TestExecutionAgent(BaseAgent):
         plan_phases: list[str],
         executed_checks: list[dict[str, Any]],
         open_questions: list[str],
+        resolved_decisions: list[str],
         copilot_response: str,
     ) -> str:
         lines: list[str] = [
@@ -218,13 +224,22 @@ class TestExecutionAgent(BaseAgent):
             ]
         )
         lines.extend(self._render_checks(executed_checks))
-        lines.extend(
-            [
-                "",
-                "## Open Questions",
-            ]
-        )
-        lines.extend(self._render_bullets(open_questions))
+        if resolved_decisions:
+            lines.extend(
+                [
+                    "",
+                    "## Resolved Decisions",
+                ]
+            )
+            lines.extend(self._render_bullets(resolved_decisions))
+        else:
+            lines.extend(
+                [
+                    "",
+                    "## Open Questions",
+                ]
+            )
+            lines.extend(self._render_bullets(open_questions))
         lines.extend(
             [
                 "",

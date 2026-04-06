@@ -270,8 +270,7 @@ class SafeEditor:
             absolute_path=absolute_path,
             dry_run=self.dry_run,
             message=f"Unsupported operation: {request.operation.value}",
-        )
-        # END STRUCTURED EDIT: SafeEditor.apply
+        )# END STRUCTURED EDIT: SafeEditor.apply
 
     def apply_many(self, requests: list[EditRequest]) -> list[EditResult]:
         """Apply multiple edit requests in order."""

@@ -36,6 +36,9 @@ class ReviewAgent(BaseAgent):
         open_questions = self._normalize_list(
             normalized_requirements.get("open_questions")
         )
+        resolved_decisions = self._normalize_list(
+            normalized_requirements.get("resolved_decisions")
+        )
         task_breakdown = self._normalize_task_breakdown(plan.get("task_breakdown"))
         code_change_slices = self._normalize_code_change_slices(
             implementation.get("code_change_slices")
@@ -45,6 +48,7 @@ class ReviewAgent(BaseAgent):
             acceptance_criteria=acceptance_criteria,
             constraints=constraints,
             open_questions=open_questions,
+            resolved_decisions=resolved_decisions,
             documentation_bundle=documentation_bundle,
             implementation=implementation,
             task_breakdown=task_breakdown,
@@ -54,6 +58,7 @@ class ReviewAgent(BaseAgent):
         )
         recommendations = self._build_recommendations(
             open_questions=open_questions,
+            resolved_decisions=resolved_decisions,
             documentation_bundle=documentation_bundle,
             implementation=implementation,
             code_change_slices=code_change_slices,
@@ -79,6 +84,7 @@ class ReviewAgent(BaseAgent):
             acceptance_criteria=acceptance_criteria,
             constraints=constraints,
             open_questions=open_questions,
+            resolved_decisions=resolved_decisions,
             copilot_response=copilot_response,
             fix_loop_required=fix_loop_required,
             fix_targets=fix_targets,
@@ -87,8 +93,10 @@ class ReviewAgent(BaseAgent):
         risks = []
         if unresolved_issues:
             risks.append("レビューで未解決事項が残っているため、実装完了判定は保留")
-        if open_questions:
-            risks.append("要件上の open questions が残っているため、レビュー結果は暫定")
+        if open_questions and not resolved_decisions:
+            risks.append(
+                "要件上の open questions が残っており、対応方針も未確定のため、レビュー結果は暫定"
+            )
         if fix_loop_required:
             risks.append("warning 以上のレビュー結果のため、fix loop が必要")
 
@@ -106,6 +114,7 @@ class ReviewAgent(BaseAgent):
                     "fix_targets": fix_targets,
                 },
                 "open_questions": open_questions,
+                "resolved_decisions": resolved_decisions,
             },
             artifacts=["docs/review-report.md"],
             next_actions=recommendations,
@@ -126,6 +135,7 @@ class ReviewAgent(BaseAgent):
         acceptance_criteria: list[str],
         constraints: list[str],
         open_questions: list[str],
+        resolved_decisions: list[str],
         documentation_bundle: dict[str, Any],
         implementation: dict[str, Any],
         task_breakdown: list[dict[str, Any]],
@@ -225,7 +235,7 @@ class ReviewAgent(BaseAgent):
                 }
             )
 
-        if open_questions:
+        if open_questions and not resolved_decisions:
             findings.append(
                 {
                     "status": "needs_follow_up",
@@ -236,7 +246,7 @@ class ReviewAgent(BaseAgent):
             findings.append(
                 {
                     "status": "ok",
-                    "summary": "現時点で明示的な open questions は残っていない。",
+                    "summary": "open questions は解消済み、または対応方針が明文化されている。",
                 }
             )
 
@@ -299,6 +309,7 @@ class ReviewAgent(BaseAgent):
         self,
         *,
         open_questions: list[str],
+        resolved_decisions: list[str],
         documentation_bundle: dict[str, Any],
         implementation: dict[str, Any],
         code_change_slices: list[dict[str, Any]],
@@ -307,8 +318,12 @@ class ReviewAgent(BaseAgent):
     ) -> list[str]:
         recommendations: list[str] = []
 
-        if open_questions:
+        if open_questions and not resolved_decisions:
             recommendations.append("open questions を解消してから実コード変更に進む")
+        elif resolved_decisions:
+            recommendations.append(
+                "文書化した persistent context policy と approval policy を前提に実コード変更を進める"
+            )
         if not documentation_bundle.get("design"):
             recommendations.append("docs/design.md を補強して設計判断を明文化する")
         if not documentation_bundle.get("runbook"):
@@ -353,6 +368,7 @@ class ReviewAgent(BaseAgent):
         acceptance_criteria: list[str],
         constraints: list[str],
         open_questions: list[str],
+        resolved_decisions: list[str],
         copilot_response: str,
         fix_loop_required: bool,
         fix_targets: list[dict[str, str]],
@@ -387,13 +403,22 @@ class ReviewAgent(BaseAgent):
             ]
         )
         lines.extend(self._render_bullets(constraints))
-        lines.extend(
-            [
-                "",
-                "## Open Questions",
-            ]
-        )
-        lines.extend(self._render_bullets(open_questions))
+        if resolved_decisions:
+            lines.extend(
+                [
+                    "",
+                    "## Resolved Decisions",
+                ]
+            )
+            lines.extend(self._render_bullets(resolved_decisions))
+        else:
+            lines.extend(
+                [
+                    "",
+                    "## Open Questions",
+                ]
+            )
+            lines.extend(self._render_bullets(open_questions))
         lines.extend(
             [
                 "",

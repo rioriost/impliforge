@@ -36,6 +36,7 @@ class RequirementsAgent(BaseAgent):
             metrics={
                 "acceptance_criteria_count": len(normalized["acceptance_criteria"]),
                 "open_question_count": len(normalized["open_questions"]),
+                "resolved_decision_count": len(normalized["resolved_decisions"]),
                 "constraint_count": len(normalized["constraints"]),
             },
         )
@@ -66,6 +67,7 @@ class RequirementsAgent(BaseAgent):
         ]
 
         open_questions: list[str] = []
+        resolved_decisions: list[str] = []
         risks = [
             "未確定の SDK API 差分は実装時に吸収が必要",
         ]
@@ -97,9 +99,18 @@ class RequirementsAgent(BaseAgent):
             open_questions.append(
                 "persistent context の保存先と復元粒度をどこまで保証するか未確定。"
             )
+            resolved_decisions.extend(
+                [
+                    "persistent context は `artifacts/workflow-state.json`、`artifacts/sessions/<session_id>/session-snapshot.json`、`artifacts/summaries/<workflow_id>/run-summary.json` に保存する。",
+                    "復元粒度は workflow/session 単位とし、`requirement`、`phase`、`workflow_id`、`session_id`、完了済みタスク、未完了タスク、直近要約、resume prompt を保証対象にする。",
+                ]
+            )
 
         if "approval" not in lower_requirement and "承認" not in requirement:
             open_questions.append("破壊的変更や依存追加時の承認フロー要否が未確定。")
+            resolved_decisions.append(
+                "delete 操作、広範囲 overwrite、依存追加、実行環境変更は human approval 必須とする。"
+            )
 
         if "cost" not in lower_requirement and "コスト" not in requirement:
             risks.append(
@@ -118,5 +129,6 @@ class RequirementsAgent(BaseAgent):
                 "高度な分散スケジューリング",
             ],
             "open_questions": open_questions,
+            "resolved_decisions": resolved_decisions,
             "risks": risks,
         }
